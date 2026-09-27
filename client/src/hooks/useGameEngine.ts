@@ -18,6 +18,8 @@ export type GameEngine = {
   registerEnemy: (id: number) => (el: HTMLDivElement | null) => void;
   registerProjectileSlot: (index: number) => (el: HTMLDivElement | null) => void;
   projectilePoolSize: number;
+  /** Jump straight to a level, resetting player/enemies/projectiles/timers. */
+  goToLevel: (id: number) => void;
   playAgain: () => void;
 };
 
@@ -169,6 +171,15 @@ export function useGameEngine({ initialLevelId = 1, paused = false, onEvents }: 
   // Position freshly mounted entities immediately (new level, respawn).
   useLayoutEffect(renderFrame, [ui.levelId, ui.status, renderFrame]);
 
+  const goToLevel = useCallback(
+    (id: number) => {
+      stateRef.current = createGameState(id);
+      input.reset();
+      syncUi();
+    },
+    [input, syncUi],
+  );
+
   const playAgain = useCallback(() => {
     stateRef.current = playAgainState();
     input.reset();
@@ -186,6 +197,7 @@ export function useGameEngine({ initialLevelId = 1, paused = false, onEvents }: 
     registerEnemy,
     registerProjectileSlot,
     projectilePoolSize: MAX_RENDERED_PROJECTILES,
+    goToLevel,
     playAgain,
   };
 }

@@ -1,13 +1,36 @@
 import type { GameStatus } from "@/game/types";
 
 type Props = {
+  /** False before the player has dismissed the start overlay. */
+  started: boolean;
+  onStart: () => void;
   status: GameStatus;
   levelCount: number;
   onPlayAgain: () => void;
 };
 
-/** Status overlays. Full styling and the start overlay arrive in phase 4. */
-export function Overlays({ status, levelCount, onPlayAgain }: Props) {
+/** Status overlays (SPEC §14): start, death, level-complete, victory. */
+export function Overlays({ started, onStart, status, levelCount, onPlayAgain }: Props) {
+  if (!started) {
+    return (
+      <div
+        className="overlay overlay-start"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Start Stickman Physics"
+        onClick={onStart}
+      >
+        <p className="overlay-title text-white">Stickman Physics</p>
+        <p className="overlay-note overlay-note-light">
+          This game plays retro chiptune music and sound effects.
+        </p>
+        <button type="button" className="overlay-button" onClick={onStart}>
+          Tap or click to start
+        </button>
+      </div>
+    );
+  }
+
   if (status === "dead") {
     return (
       <div className="overlay overlay-dead" role="status" aria-live="assertive">

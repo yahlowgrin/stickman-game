@@ -498,6 +498,250 @@ body {
   opacity: 0.85;
 }
 
+/* HUD chrome ------------------------------------------------------------------ */
+
+.hud-icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  cursor: pointer;
+}
+
+.hud-icon-button:hover {
+  background: #f1f5f9;
+}
+
+.hud-icon-button:focus-visible {
+  outline: 2.5px solid #059669;
+  outline-offset: 2px;
+}
+
+.hud-icon-button[aria-pressed="true"] {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.hud-mute-label {
+  display: none;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (min-width: 480px) {
+  .hud-mute-label {
+    display: inline;
+  }
+}
+
+/* Touch controls (SPEC §6) ------------------------------------------------------ */
+/* Always mounted; shown only on touch-capable devices via (pointer: coarse). */
+
+.touch-controls {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 15;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+}
+
+@media (pointer: coarse) {
+  .touch-controls {
+    display: flex;
+  }
+}
+
+.touch-group {
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.touch-btn {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid rgba(15, 23, 42, 0.25);
+  background: rgba(255, 255, 255, 0.82);
+  color: #1e293b;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.25);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  pointer-events: auto;
+}
+
+.touch-btn:active {
+  background: rgba(226, 232, 240, 0.95);
+  transform: scale(0.94);
+}
+
+.touch-jump {
+  align-self: flex-end;
+  width: 64px;
+  height: 64px;
+  background: rgba(5, 150, 105, 0.85);
+  border-color: rgba(6, 95, 70, 0.6);
+  color: #ffffff;
+}
+
+/* Level select (SPEC §12) ------------------------------------------------------- */
+
+.level-select-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.level-select-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border-radius: 16px;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.4);
+  overflow: hidden;
+}
+
+.level-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.level-select-title {
+  font-family: var(--font-game);
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.level-select-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: #475569;
+  cursor: pointer;
+}
+
+.level-select-close:hover {
+  background: #f1f5f9;
+}
+
+.level-select-close:focus-visible {
+  outline: 2.5px solid #059669;
+  outline-offset: 2px;
+}
+
+.level-select-scroll {
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.level-select-section-title {
+  font-family: var(--font-game);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #334155;
+  margin-bottom: 8px;
+}
+
+.level-select-range {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: #94a3b8;
+}
+
+.level-select-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px;
+}
+
+.level-tile {
+  aspect-ratio: 1;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1.5px solid #cbd5e1;
+  background: #ffffff;
+  color: #1e293b;
+  font-family: var(--font-game);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.level-tile:hover:not(:disabled) {
+  background: #ecfdf5;
+  border-color: #10b981;
+}
+
+.level-tile:focus-visible {
+  outline: 2.5px solid #059669;
+  outline-offset: 2px;
+}
+
+.level-tile:disabled {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.level-tile[data-current="true"] {
+  background: #059669;
+  border-color: #065f46;
+  color: #ffffff;
+}
+
+.level-tile[data-boss="true"]:not(:disabled) {
+  border-color: #f5b700;
+  box-shadow: inset 0 0 0 1px #f5b700;
+}
+
 /* Overlays ------------------------------------------------------------------ */
 
 .overlay {
@@ -523,6 +767,16 @@ body {
 .overlay-note {
   font-size: 14px;
   color: #1e293b;
+}
+
+.overlay-start {
+  background: rgba(15, 23, 42, 0.82);
+  cursor: pointer;
+}
+
+.overlay-note-light {
+  color: #cbd5e1;
+  max-width: 30ch;
 }
 
 .overlay-dead {
@@ -567,6 +821,24 @@ body {
   to {
     transform: scale(1) rotate(-4deg);
     opacity: 1;
+  }
+}
+
+/* Narrow / short screens (SPEC §3): single-line header, hide the control hint. */
+
+@media (max-height: 560px), (max-width: 360px) {
+  .control-hint {
+    display: none !important;
+  }
+}
+
+@media (max-height: 420px) {
+  header {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .hud-mute-label {
+    display: none !important;
   }
 }
 

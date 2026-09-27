@@ -7,8 +7,8 @@ Source of truth: `docs/SPEC.md`. Read both files at the start of every session.
 - [x] 1. Refactor structure, types, fixed-timestep physics loop
 - [x] 2. Level generator + reachability validator
 - [x] 3. Enemies, projectiles, bosses
-- [ ] 4. UI, overlays, touch controls, persistence  ← **next**
-- [ ] 5. Audio
+- [x] 4. UI, overlays, touch controls, persistence
+- [ ] 5. Audio  ← **next**
 - [ ] 6. Visual polish, final check against the acceptance criteria
 
 ## File structure
@@ -32,16 +32,23 @@ client/
       levelGenerator.ts      mulberry32 + Rng, 8 templates + boss arena, themed names, validate-and-retry generation
       sections.ts            section ranges/labels, boss levels, boss HP table, section projectile type
       validation.ts          validator: reach table, standable segments, BFS route search, all §5/§11 rules
+      persistence.ts         localStorage load/save (unlockedLevel, muted), injectable storage for tests,
+                             clamps/repairs corrupt or out-of-range saved data instead of trusting it
     hooks/
       useGameEngine.ts       RAF loop, refs, visibilitychange pause, imperative DOM updates (incl. the
-                             fixed projectile pool + boss HP pips/charging), syncs {levelId, status} to React
+                             fixed projectile pool + boss HP pips/charging), syncs {levelId, status} to React;
+                             now also exposes goToLevel(id) for the level-select/dev-jump path
       useKeyboardInput.ts    arrow/space handling with preventDefault
+      useTouchControls.ts    pointer-event hold/tap handlers wired onto the shared InputController
+      useProgress.ts         loads Progress once, persists every change (mute toggle, level unlock)
     components/
       GameViewport.tsx       ResizeObserver + uniform CSS scale of the 400×500 world
       GameWorld.tsx          sky, sun, clouds + level geometry + entities + projectile pool
       Platform.tsx Spike.tsx Goal.tsx Player.tsx Enemy.tsx Projectile.tsx
-      Hud.tsx                header (title, level, control hint)
-      Overlays.tsx           basic SPLAT! / LEVEL COMPLETE! / victory overlays
+      Hud.tsx                header: title, level, control hint, level-select button, mute toggle
+      Overlays.tsx           start / SPLAT! / LEVEL COMPLETE! / victory overlays (SPEC §14)
+      TouchControls.tsx      on-screen Left/Right/Jump buttons, (pointer: coarse)-only via CSS
+      LevelSelect.tsx        full-screen level grid grouped by section; locked levels disabled
 scripts/validate-levels.ts   validates all 200 levels + template no-repeat rule, prints generator stats (part of `npm run check`)
 tests/*.test.ts              node:test simulation tests (`npm test`)
 vite.config.ts               root=client, base from BASE_PATH env, out=dist/
@@ -165,52 +172,119 @@ vite.config.ts               root=client, base from BASE_PATH env, out=dist/
 - Fire/lightning enemies' own body color already encodes their projectile type
   (`data-kind`), so a shooter is identifiable before it ever fires.
 
+
+- **Phase 4 — app-level flow** (`pages/Home.tsx`): a `started` boolean (not part of
+  `GameStatus`) gates the Start overlay; `useGameEngine`'s `paused` prop is
+  `!started || levelSelectOpen`, so the simulation genuinely doesn't run behind
+  either overlay (no silent falling/enemy movement while the menu is up). The dev
+  `?level=N` override still works but now only overrides the *initial* level;
+  saved progress (`progress.unlockedLevel`) is the normal starting point.
+- **`useGameEngine.goToLevel(id)`**: new — resets to any level (player/enemies/
+  projectiles/timers), same machinery `playAgain()` already used (`playAgain` is now
+  just `goToLevel(1)` in spirit, kept separate since it's a distinct spec-named
+  action). Used by both the level-select grid and the dev override.
+- **Persistence** (`game/persistence.ts` + `hooks/useProgress.ts`): `Progress =
+  { unlockedLevel, muted }` saved as one JSON blob under
+  `stickman-physics:progress:v1`. `loadProgress`/`saveProgress` take an injectable
+  `StorageLike` (defaults to `localStorage`, checked safely — some browsers throw
+  just *accessing* `localStorage` in locked-down private modes) so the module is
+  unit-testable without jsdom (not an allowed new dependency). Loading clamps/repairs
+  garbage input (non-numeric, out-of-range, corrupt JSON) back to safe defaults rather
+  than trusting it. `unlockedAfterCompleting(current, completedId)` is the pure rule
+  (`max(current, completedId+1)`, capped at `TOTAL_LEVELS`) — `useProgress` calls it
+  from `Home.tsx`'s `onEvents` handler on every `"complete"` event, so replaying an
+  earlier level never lowers progress and finishing 200 saturates at 200. `playAgain`
+  deliberately does not touch progress (SPEC §14: victory keeps unlocked levels).
+- **Level select** (`LevelSelect.tsx`): one grid per section (`sections.ts`'
+  `SECTION_RANGES`/`SECTION_LABELS`), `disabled` tiles for `id > unlockedLevel` (shows
+  a `Lock` icon instead of the number), the current level highlighted
+  (`data-current`), boss levels get a gold ring (`data-boss`). Closes on backdrop
+  click, the × button, or Escape. Opening it sets `levelSelectOpen`, which pauses the
+  engine the same way the start overlay does.
+- **Touch controls** (`TouchControls.tsx` + `useTouchControls.ts`): always mounted;
+  shown only via the CSS `@media (pointer: coarse)` query (SPEC §6's own words) so
+  there's no JS device-detection to get out of sync with reality. Left/Right use
+  pointerdown/up/leave/cancel to hold (mirrors keydown/keyup); Jump is a single
+  pointerdown (mirrors the keyboard's non-repeat press). Multi-touch (hold a
+  direction *and* jump) needs no special handling — each button is a separate DOM
+  element, so the browser hands each simultaneously-pressed button its own pointer
+  event independent of the others. All three buttons are 56×56 (Jump 64×64),
+  `touch-action: none`, no callouts/selection (verified in Chromium: 56×56, 56×56,
+  64×64).
+- **Header collapse** (SPEC §3): pure CSS, no JS breakpoint logic — `.control-hint`
+  is hidden below `768px` width (existing, phase 1) *and now also* below `560px`
+  height or `360px` width; header padding shrinks further below `420px` height (a
+  phone with its browser toolbar visible). Verified at 375×480: hint hidden, no
+  scroll.
+- **Mute button** shows both the icon (`Volume2`/`VolumeX`) and a visible text label
+  ("Mute"/"Unmute", hidden below 480px width to save header space) plus
+  `aria-pressed`, per SPEC §16's "both icon and label" wording — not just an
+  `aria-label`.
+- A single well-timed jump can occasionally arc straight from one platform into the
+  goal's hitbox without visiting every intermediate platform (proven in
+  `tests/reach.test.ts`'s spirit, not a bug: the validator only guarantees *a* route
+  exists via modest jumps, not that skilled play can't shortcut it — this is normal
+  platformer skill expression, and every level's guaranteed safe route still requires
+  every step for a less-precisely-timed jump).
+
 ## Known issues / not yet done
 
 - Level names such as "Toxic Pits" are chosen independently of the template, so a
   name may not describe the layout.
-- No start overlay, level select, touch controls, persistence, mute, or audio yet
-  (phases 4–5). In dev, `?level=N` jumps to any level.
-- Header does not yet collapse specially on short screens.
-- `shoot` and `bossHit` events are emitted but nothing consumes them yet (no
-  `onEvents` wiring in `Home.tsx`) — that lands with audio in phase 5, though phase 4
-  will likely want `onEvents` for its own reasons (progress saving on `complete`).
+- No audio yet (phase 5) — the Start overlay's "Tap or click to start" click is
+  already the correct user gesture to create the AudioContext on; phase 5 just needs
+  to hook into `onStart` (or `started` going true) in `Home.tsx`.
+- `shoot` and `bossHit` events are still unconsumed (audio's job, phase 5).
+- Touch input and level-select/overlay UI are verified with Chromium/Playwright
+  screenshots and scripted interaction, not `npm test` — jsdom/testing-library would
+  be a new dependency, which the spec disallows. `persistence.ts`'s logic (the part
+  that isn't DOM) is fully unit tested.
 
-## Test status (end of phase 3)
+## Test status (end of phase 4)
 
 - `npm run check`: pass — tsc + "Level validation passed: 200 level(s) checked (40
   hand-authored)"; generator max 7 attempts.
-- `npm test`: 49/49 pass (physics, engine, loop, levels/validator/generator, reach,
-  projectiles — shooter charge timing, no-shot distance, fire/lightning speed, toxic
-  arc, platform pass-through, world-exit cleanup, projectile-kill, boss ramp-up).
-- `npm run build`: pass.
-- Chromium: levels 21, 30, 34, 41, 50, 100, 101, 110, 150, 200 screenshotted — fire
-  enemy (orange), Inferno King boss (crown + 5 gold pips), lightning enemy (cyan) with
-  its zig-zag bolt caught mid-flight, toxic blob (lime, round, glowing) caught
-  mid-arc, fast enemies' motion streaks (level 34), Thunder God (cyan boss, 5 pips)
-  and Poison King (lime boss, 6 pips) crowns/pips all correct. No console errors.
+- `npm test`: 57/57 pass (adds `tests/persistence.test.ts`: defaults, round-trip,
+  corrupt-JSON recovery, out-of-range clamping, a storage that throws on every call,
+  and the unlock-never-regresses/never-exceeds-200 rule).
+- `npm run build`: pass (plain and with `BASE_PATH=/stickman-game/`).
+- Chromium/Playwright, scripted end-to-end: start overlay shows and dismisses on
+  click; holding →/jump completes level 1 (with a correctly-timed jump — the level's
+  intended route is the multi-hop one; see the note above) and unlocks level 2;
+  reloading resumes at level 2 and level-select correctly shows 1–2 unlocked, 3+
+  locked; mute toggles, shows the right icon/label/aria-pressed, and survives a
+  reload; touch controls render only under `(pointer: coarse)`, are hidden on a
+  plain desktop viewport, are all ≥56px, and holding Right + tapping Jump together
+  (simulated via a held pointer + the existing keyboard jump) moves the player; no
+  horizontal or vertical scroll at 320×568, 375×480, or 375×667; zero console errors
+  across every scenario above.
 
 ## Next
 
-**Phase 4 — UI, overlays, touch controls, persistence** (use Sonnet):
-1. Start overlay (audio-context-creation gesture, per SPEC §14), a level-select screen
-   (grid grouped by section, only unlocked levels selectable — needs the section
-   metadata already in `sections.ts`), full death/complete/victory overlay styling
-   per §14 (current `Overlays.tsx` is a placeholder), mute toggle in the HUD
-   (`Volume2`/`VolumeX`, `aria-pressed`).
-2. Touch controls (§6): on-screen Left/Right/Jump buttons ≥56px, `pointer: coarse`
-   only, multi-touch (hold direction + jump together), `touch-action: none`, wired
-   into the existing `InputController` (`client/src/game/input.ts`) the same way
-   `useKeyboardInput` is.
-3. `localStorage` persistence (§12): highest unlocked level + mute preference, wrapped
-   in try/catch with `console.warn` on failure (no empty catches). Drive "unlock next
-   level" off the `complete` event from `stepGame` (wire `onEvents` in `Home.tsx`,
-   already plumbed through `useGameEngine`). Resume at the highest unlocked level on
-   load instead of always level 1 (remove/adjust the dev `?level=N` override
-   accordingly — keep it for dev but let it not clobber saved progress in prod).
-4. Header collapse on narrow/short screens (§3): single line, hide the control hint
-   (already conditionally hidden ≥ `md`; check very short heights too, e.g. phones
-   with the browser toolbar visible).
-5. Tests: mute persists across reload (mock localStorage), level unlock persists and
-   resumes, level-select only shows unlocked levels, touch input drives the same
-   `InputController` as keyboard (simulate multi-touch hold+jump).
+**Phase 5 — Audio** (use Sonnet):
+1. `game/audio.ts`: a small Web Audio sound engine, no audio files. Create/resume the
+   `AudioContext` from `Home.tsx`'s `onStart` handler (the Start overlay's click is
+   already exactly the required user gesture — SPEC §14/§15). Suspend on
+   `visibilitychange` hidden, resume when visible (mirrors the existing
+   `useGameEngine` RAF pause, but audio needs its own listener since the RAF loop
+   already stops advancing the sim — don't double-suspend).
+2. Music: upbeat chiptune loop (square lead + triangle bass), a lookahead scheduler
+   using `AudioContext.currentTime` (not `setInterval` alone), a distinct loop/key per
+   `Section` (`sections.ts` already has the 5 sections) — swap loops on
+   `levelStart`/on mount when `level.section` changes.
+3. Effects, each tied to an existing `GameEvent` (all already emitted by `stepGame`,
+   just unconsumed): `jump`, `land` (already rate-limited to real landings via
+   `LAND_EVENT_MIN_VY`, don't re-throttle), `stomp` (defeated vs. not could differ),
+   `bossHit`, `shoot` (vary by `projectileType`?), `death`, `doorUnlock`,
+   `complete`. Wire via `useGameEngine`'s existing `onEvents` option in `Home.tsx`
+   (already used there for progress unlocking — one handler, or split into two).
+4. Mute: `progress.muted` (already persisted, `useProgress`) should silence
+   everything immediately, including music already scheduled — don't just stop
+   scheduling new notes. Cross-check: toggling mute mid-note must not click/pop.
+5. Cleanup: clear all scheduled timers/oscillators on unmount (React StrictMode
+   double-invokes effects in dev — verify no doubled schedulers/leaked nodes).
+6. Tests: to the extent Web Audio logic is pure (the lookahead scheduler's timing
+   math, note-sequence data, mute gating), unit test it in `tests/`. Actual
+   AudioContext/oscillator behavior isn't unit-testable without a browser; verify
+   manually (Playwright can at least assert no console errors/exceptions and that
+   `AudioContext` was constructed after, not before, the start click).
