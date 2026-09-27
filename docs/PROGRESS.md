@@ -8,8 +8,8 @@ Source of truth: `docs/SPEC.md`. Read both files at the start of every session.
 - [x] 2. Level generator + reachability validator
 - [x] 3. Enemies, projectiles, bosses
 - [x] 4. UI, overlays, touch controls, persistence
-- [ ] 5. Audio  ← **next**
-- [ ] 6. Visual polish, final check against the acceptance criteria
+- [x] 5. Audio
+- [ ] 6. Visual polish, final check against the acceptance criteria  ← **next**
 
 ## File structure
 
@@ -34,6 +34,9 @@ client/
       validation.ts          validator: reach table, standable segments, BFS route search, all §5/§11 rules
       persistence.ts         localStorage load/save (unlockedLevel, muted), injectable storage for tests,
                              clamps/repairs corrupt or out-of-range saved data instead of trusting it
+      audio.ts               Web Audio sound engine: pure lookahead-scheduler math + per-section chiptune
+                             note patterns (unit tested) plus the AudioContext-touching engine itself
+                             (defensive try/catch throughout, never throws even with no `window`)
     hooks/
       useGameEngine.ts       RAF loop, refs, visibilitychange pause, imperative DOM updates (incl. the
                              fixed projectile pool + boss HP pips/charging), syncs {levelId, status} to React;
@@ -41,6 +44,8 @@ client/
       useKeyboardInput.ts    arrow/space handling with preventDefault
       useTouchControls.ts    pointer-event hold/tap handlers wired onto the shared InputController
       useProgress.ts         loads Progress once, persists every change (mute toggle, level unlock)
+      useAudio.ts            one AudioEngine per mount (lazy ref, no side effects until resume()),
+                             disposed on unmount
     components/
       GameViewport.tsx       ResizeObserver + uniform CSS scale of the 400×500 world
       GameWorld.tsx          sky, sun, clouds + level geometry + entities + projectile pool
@@ -227,64 +232,123 @@ vite.config.ts               root=client, base from BASE_PATH env, out=dist/
   platformer skill expression, and every level's guaranteed safe route still requires
   every step for a less-precisely-timed jump).
 
+- **Phase 5 — audio engine** (`game/audio.ts`): split cleanly into a pure half and an
+  impure half so the interesting logic is unit testable without a browser.
+  - Pure: `advanceSequencer(state, pattern, stepSeconds, until)` is the lookahead
+    scheduler's timing math — given a sequencer position and a "how far ahead to
+    look" horizon, it returns exactly which notes are due and the advanced state,
+    with no AudioContext involved. The real scheduler (a `setInterval` every 30ms)
+    just calls this with `until = ctx.currentTime + LOOKAHEAD_SECONDS` (150ms) and
+    turns each returned note into a real oscillator at its *exact* scheduled time —
+    this is what SPEC §15 means by "schedule ahead... do not rely on setInterval
+    timing alone": the interval only decides *when to check*, never *when a note
+    plays*. `noteFrequency(semitone, rootHz)` is the equal-tempered math.
+    `SECTION_THEMES` is pure data: one root note + tempo + 16-step lead (square) +
+    bass (triangle) pattern per `Section`, giving 5 audibly distinct loops (key
+    *and* tempo both differ, not just one).
+  - Impure (`createAudioEngine()`): `resume()` (called from `Home.tsx`'s `onStart`,
+    the Start overlay click — the required user gesture) lazily creates the
+    `AudioContext` + a `master -> (music, sfx)` gain graph and starts the scheduler;
+    idempotent (a second call just resumes if suspended). `setMuted` ramps
+    `masterGain` to/from 0 over 50ms (no click/pop) rather than stopping the
+    scheduler — music keeps running silently while muted, so unmuting is instant and
+    stays in sync. `setSection` fades `musicGain` out/in over 120ms each way and
+    restarts the sequencers on the new theme mid-fade, so the old and new loop's
+    notes never overlap; it's safe to call before `resume()` (records the section,
+    applies it once a context exists). `playEvents` maps `GameEvent`s to short
+    synthesized blips (see below); a boss stomp emits both `stomp` and `bossHit` in
+    the same tick, so `playEvents` skips the generic stomp sound for any enemyId
+    that also got a `bossHit` sound that tick. Every AudioContext-touching call is
+    wrapped in try/catch with `console.warn` — verified by unit test that calling
+    every method with no `window` at all (this Node test run) never throws, and by
+    Playwright that a real browser session logs zero console errors/warnings
+    through start, 2s of music+effects, mute, unmute, tab-hide/show, and six
+    level/section changes.
+  - Effect sounds (all short oscillator envelopes, no audio files): `jump` (square,
+    rising sweep), `land` (quiet low sine, already rate-limited upstream by
+    `LAND_EVENT_MIN_VY` — audio adds no extra throttling), `stomp` (square blip,
+    extra chirp if `defeated`), `bossHit` (bigger sawtooth thud, extra chirp if
+    `defeated`), `shoot` (varies by `projectileType`: fire = low square, lightning =
+    very short high square "zap", toxic = low triangle "squelch" — audibly distinct,
+    matching their visual shapes), `death` (descending sawtooth), `doorUnlock`
+    (two-note rising chime), `complete` (three-note ascending arpeggio).
+    `respawn`/`levelStart`/`victory` have no dedicated sound (not in SPEC §15's
+    effect list; `complete` already covers level-finish feedback, including for
+    level 200).
+  - `useAudio.ts`: one `AudioEngine` per mount via a lazily-initialized ref (not
+    `useState`, so no extra re-render); safe under StrictMode's double-render since
+    `createAudioEngine()` itself has zero side effects (no listeners, no
+    AudioContext) until `resume()` is actually called from the real click handler.
+    `dispose()` runs in the unmount cleanup.
+  - `Home.tsx` wiring: `onStart` calls `audio.resume()` then sets `started`; a
+    `useEffect` mirrors `progress.muted` into `audio.setMuted`; another mirrors
+    `engine.level.section` into `audio.setSection` (fires on every level change,
+    no-ops when the section didn't actually change); `handleEvents` (already the
+    `onEvents` callback wired into `useGameEngine` for progress-unlocking) also
+    calls `audio.playEvents(events)` — one place, two consumers of the same tick's
+    events.
+
 ## Known issues / not yet done
 
 - Level names such as "Toxic Pits" are chosen independently of the template, so a
   name may not describe the layout.
-- No audio yet (phase 5) — the Start overlay's "Tap or click to start" click is
-  already the correct user gesture to create the AudioContext on; phase 5 just needs
-  to hook into `onStart` (or `started` going true) in `Home.tsx`.
-- `shoot` and `bossHit` events are still unconsumed (audio's job, phase 5).
-- Touch input and level-select/overlay UI are verified with Chromium/Playwright
-  screenshots and scripted interaction, not `npm test` — jsdom/testing-library would
-  be a new dependency, which the spec disallows. `persistence.ts`'s logic (the part
-  that isn't DOM) is fully unit tested.
+- A single well-timed jump can occasionally arc straight from one platform into the
+  goal's hitbox without visiting every intermediate platform (see the phase 4 note
+  above) — cosmetic/difficulty nit, not a correctness bug.
+- Touch input, level-select/overlay UI, and now audio's AudioContext-touching half
+  are verified with Chromium/Playwright screenshots and scripted interaction, not
+  `npm test` — jsdom/testing-library would be a new dependency, which the spec
+  disallows. Everything with pure logic underneath (`persistence.ts`, `audio.ts`'s
+  scheduler/theme data) is fully unit tested instead.
+- Music is a generated arpeggio, not a hand-composed tune — meets the letter of
+  SPEC §15 (square lead + triangle bass, distinct per section, lookahead-scheduled)
+  but a human composer would obviously do better. Flagging this as a deliberate
+  scope/time tradeoff, not an oversight.
 
-## Test status (end of phase 4)
+## Test status (end of phase 5)
 
 - `npm run check`: pass — tsc + "Level validation passed: 200 level(s) checked (40
   hand-authored)"; generator max 7 attempts.
-- `npm test`: 57/57 pass (adds `tests/persistence.test.ts`: defaults, round-trip,
-  corrupt-JSON recovery, out-of-range clamping, a storage that throws on every call,
-  and the unlock-never-regresses/never-exceeds-200 rule).
+- `npm test`: 68/68 pass (adds `tests/audio.test.ts`: note-frequency math, the
+  lookahead scheduler — no-note-too-early, exact note times, resuming from a
+  returned state matches one big call, never schedules at/after the horizon, empty
+  pattern/zero step safety — section-theme sanity (distinct key+tempo, matched
+  lead/bass loop lengths), and the full engine API never throwing with no `window`).
 - `npm run build`: pass (plain and with `BASE_PATH=/stickman-game/`).
-- Chromium/Playwright, scripted end-to-end: start overlay shows and dismisses on
-  click; holding →/jump completes level 1 (with a correctly-timed jump — the level's
-  intended route is the multi-hop one; see the note above) and unlocks level 2;
-  reloading resumes at level 2 and level-select correctly shows 1–2 unlocked, 3+
-  locked; mute toggles, shows the right icon/label/aria-pressed, and survives a
-  reload; touch controls render only under `(pointer: coarse)`, are hidden on a
-  plain desktop viewport, are all ≥56px, and holding Right + tapping Jump together
-  (simulated via a held pointer + the existing keyboard jump) moves the player; no
-  horizontal or vertical scroll at 320×568, 375×480, or 375×667; zero console errors
-  across every scenario above.
+- Chromium/Playwright, scripted: the AudioContext is created exactly once, only
+  after the Start click (never before), and starts `running` (no autoplay
+  suspension warning); tab hide/show suspends/resumes it; mute sets
+  `aria-pressed`/toggles the button correctly; six level navigations across four
+  different sections (core/fire/lightning/toxic) each mount→start→unmount the audio
+  engine with no console errors; 2+ seconds of active music/effect playback (jump,
+  land, death via walking into level 2's spikes) plus mute/unmute produced zero
+  console errors or warnings.
 
 ## Next
 
-**Phase 5 — Audio** (use Sonnet):
-1. `game/audio.ts`: a small Web Audio sound engine, no audio files. Create/resume the
-   `AudioContext` from `Home.tsx`'s `onStart` handler (the Start overlay's click is
-   already exactly the required user gesture — SPEC §14/§15). Suspend on
-   `visibilitychange` hidden, resume when visible (mirrors the existing
-   `useGameEngine` RAF pause, but audio needs its own listener since the RAF loop
-   already stops advancing the sim — don't double-suspend).
-2. Music: upbeat chiptune loop (square lead + triangle bass), a lookahead scheduler
-   using `AudioContext.currentTime` (not `setInterval` alone), a distinct loop/key per
-   `Section` (`sections.ts` already has the 5 sections) — swap loops on
-   `levelStart`/on mount when `level.section` changes.
-3. Effects, each tied to an existing `GameEvent` (all already emitted by `stepGame`,
-   just unconsumed): `jump`, `land` (already rate-limited to real landings via
-   `LAND_EVENT_MIN_VY`, don't re-throttle), `stomp` (defeated vs. not could differ),
-   `bossHit`, `shoot` (vary by `projectileType`?), `death`, `doorUnlock`,
-   `complete`. Wire via `useGameEngine`'s existing `onEvents` option in `Home.tsx`
-   (already used there for progress unlocking — one handler, or split into two).
-4. Mute: `progress.muted` (already persisted, `useProgress`) should silence
-   everything immediately, including music already scheduled — don't just stop
-   scheduling new notes. Cross-check: toggling mute mid-note must not click/pop.
-5. Cleanup: clear all scheduled timers/oscillators on unmount (React StrictMode
-   double-invokes effects in dev — verify no doubled schedulers/leaked nodes).
-6. Tests: to the extent Web Audio logic is pure (the lookahead scheduler's timing
-   math, note-sequence data, mute gating), unit test it in `tests/`. Actual
-   AudioContext/oscillator behavior isn't unit-testable without a browser; verify
-   manually (Playwright can at least assert no console errors/exceptions and that
-   `AudioContext` was constructed after, not before, the start click).
+**Phase 6 — Visual polish, final check against the acceptance criteria** (use
+Sonnet for polish; escalate to Opus only if a specific bug resists 2–3 Sonnet
+attempts):
+1. Full pass over SPEC §13 (visual design) and §16 (accessibility) as a checklist —
+   most of it is already in place from earlier phases (palette, fonts, sky/ground/
+   platform/spike styling, player pose set, per-kind enemy colors, projectile
+   shapes, `prefers-reduced-motion` handling in several places, ≥44px controls,
+   aria-labels throughout) — this phase is about finding what's missing or rough,
+   not building from scratch.
+2. Manual/scripted playtest of the specific levels the spec's definition of done
+   calls out: 1, 20, 21, 26, 28, 30, 40, 41, 43, 100, 101, 150, 200 — confirm each
+   is visually correct and (for the boss levels) winnable, at 375×667 with both
+   keyboard and touch.
+3. Re-verify the full §18 checklist end to end: `npm run check`, `npm test`,
+   `npm run build` (including `BASE_PATH`), `npm run dev:client`, no console errors
+   during normal play, 375×667 fits with no scroll, README covers run/build/deploy
+   (already written in phase 1 — re-check it's still accurate after 5 phases of
+   changes).
+4. Write the README's "manual playtest checklist" deliverable the spec's §18 asks
+   for, covering: start overlay, keyboard + touch on a narrow phone viewport, the
+   specific levels above, mute/unmute, and progress surviving a reload.
+5. Any known issues from phases 1–5's notes above worth fixing now (the arc-skip
+   jump, generated-name/template mismatch) vs. explicitly deciding to leave them and
+   saying so plainly in the final report — this is the last phase, so anything not
+   fixed here should be called out as a known limitation rather than silently
+   dropped.

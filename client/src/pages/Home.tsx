@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GameViewport } from "@/components/GameViewport";
 import { GameWorld } from "@/components/GameWorld";
 import { Hud } from "@/components/Hud";
@@ -7,6 +7,7 @@ import { Overlays } from "@/components/Overlays";
 import { TouchControls } from "@/components/TouchControls";
 import { LEVEL_COUNT } from "@/game/levels";
 import type { GameEvent } from "@/game/types";
+import { useAudio } from "@/hooks/useAudio";
 import { useGameEngine } from "@/hooks/useGameEngine";
 import { useKeyboardInput } from "@/hooks/useKeyboardInput";
 import { useProgress } from "@/hooks/useProgress";
@@ -20,16 +21,18 @@ function devStartLevel(): number | undefined {
 
 export default function Home() {
   const { progress, setMuted, unlockThrough } = useProgress();
+  const audio = useAudio();
   const [started, setStarted] = useState(false);
   const [levelSelectOpen, setLevelSelectOpen] = useState(false);
 
   const handleEvents = useCallback(
     (events: GameEvent[]) => {
+      audio.playEvents(events);
       for (const event of events) {
         if (event.type === "complete") unlockThrough(event.levelId);
       }
     },
-    [unlockThrough],
+    [audio, unlockThrough],
   );
 
   const [initialLevelId] = useState(() => devStartLevel() ?? progress.unlockedLevel);
@@ -41,6 +44,10 @@ export default function Home() {
 
   useKeyboardInput(engine.input, started && !levelSelectOpen);
 
+  // Mute preference and the current level's music both drive the audio engine directly.
+  useEffect(() => audio.setMuted(progress.muted), [audio, progress.muted]);
+  useEffect(() => audio.setSection(engine.level.section), [audio, engine.level.section]);
+
   const openLevelSelect = useCallback(() => setLevelSelectOpen(true), []);
   const closeLevelSelect = useCallback(() => setLevelSelectOpen(false), []);
   const selectLevel = useCallback(
@@ -51,7 +58,11 @@ export default function Home() {
     [engine],
   );
   const toggleMute = useCallback(() => setMuted(!progress.muted), [progress.muted, setMuted]);
-  const onStart = useCallback(() => setStarted(true), []);
+  const onStart = useCallback(() => {
+    // The Start overlay's click/tap is the user gesture Web Audio requires (SPEC §15).
+    audio.resume();
+    setStarted(true);
+  }, [audio]);
 
   return (
     <main className="relative mx-auto flex h-dvh w-full max-w-[640px] flex-col overflow-hidden px-2 pb-2 pt-1 sm:px-4 sm:pb-4">
