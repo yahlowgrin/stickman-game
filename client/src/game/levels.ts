@@ -44,7 +44,7 @@ export const FIRE_LEVEL_NAMES = [
 ] as const;
 
 export const SPEED_LEVEL_NAMES = [
-  ...Array.from({ length: 9 }, (_, i) => `Speed Demons ${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => (i === 7 ? "The Slow Lane" : `Speed Demons ${i + 1}`)),
   "Speed Demon Boss",
 ] as const;
 
@@ -632,7 +632,10 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
     goal: goal(297, 80),
   }),
 
-  // 38 — Speed Demons 8: spikes on the platforms too.
+  // 38 — The Slow Lane: a deliberate breather in the Speed section, at the
+  // user's request, after repeated reports that this level was too hard.
+  // Enemies here are slow (1.2) instead of the section's usual 3.5-4.5 —
+  // this level only.
   level(38, {
     platforms: [
       ground(0, 400),
@@ -648,9 +651,9 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
     // un-jumped fall from spawn lands right around x=160-205 on this
     // platform, clipping the spike's old position with zero warning.
     spikes: [spikes(150, 400, 250), spikes(225, 340, 30)],
-    // Confined to the far side from the landing direction, speed eased
-    // slightly (still clearly "fast" for this section).
-    enemies: [enemy(1, 280, 340, 400, 3.8), enemy(2, 210, 230, 270, 3.6)],
+    // Confined to the far side from the landing direction; speed dropped
+    // way down (was 3.8/3.6) so this level plays as an easy breather.
+    enemies: [enemy(1, 280, 340, 400, 1.2), enemy(2, 210, 230, 270, 1.2)],
     goal: goal(340, 140),
   }),
 
