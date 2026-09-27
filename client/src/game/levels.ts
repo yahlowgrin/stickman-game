@@ -165,7 +165,13 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
       platform(280, 130, 100),
     ],
     spikes: [spikes(170, 400, 230)],
-    enemies: [enemy(1, 320, 170, 280, 1.2), enemy(2, 190, 155, 260, 1.4)],
+    // Patrols confined to the far side of each platform (40px wide, slower),
+    // leaving a genuinely safe ~40px landing zone on the side the player
+    // arrives from -- accounting for the player's own 40px width, not just
+    // its x position. The original ranges covered nearly the whole platform
+    // (110/120 and 105/120), so landing from below was a near-unavoidable
+    // side-on death with zero reaction time (reported as "too hard").
+    enemies: [enemy(1, 320, 240, 280, 1), enemy(2, 190, 220, 260, 1)],
     goal: goal(312, 130),
   }),
 

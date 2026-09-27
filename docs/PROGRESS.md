@@ -437,3 +437,27 @@ this up, `docs/SPEC.md` is still the source of truth and this file's "Decisions
 and clarifications" and "Known issues" sections above cover every deliberate
 choice and open item across all six phases — read them before assuming
 something is a bug rather than a documented tradeoff.
+
+## Post-launch fix: level 8 was too hard
+
+User feedback: level 8 ("The Gauntlet") felt too hard. Investigation with the
+real physics (not guesswork) found a genuine bug, not just subjective
+difficulty: `enemy(1, 320, 170, 280, 1.2)` patrolled 110 of platform1's 120px,
+and `enemy(2, 190, 155, 260, 1.4)` patrolled 105 of platform3's 120px. Combined
+with the player's own 40px width, the *only* landing spots that didn't already
+overlap the enemy's reachable area were 0-10px wide — simulating the natural
+"jump from the ground onto platform1" arc with the real engine reproduced an
+unavoidable death exactly on the landing tick, before the player could react
+at all. That's not a difficulty curve, it's a coin flip.
+
+Fix: `enemies: [enemy(1, 320, 240, 280, 1), enemy(2, 190, 220, 260, 1)]` —
+patrol width shrunk to 40px (still ≥ the enemy's own 32px body) and confined
+to the far side of each platform, and speed eased from 1.2/1.4 to 1. This
+leaves a genuinely safe ~40-80px zone on the side the player actually lands
+on, accounting for the player's own width (not just its x position, which was
+the arithmetic error in reasoning about the original "safe zone" size).
+Verified with the real engine: landing is safe, and standing still on the safe
+side is safe indefinitely (300+ ticks / 5s simulated) — the level still
+requires timing a crossing or a stomp past the enemy, which is the intended
+"gauntlet" challenge, just no longer an unavoidable first-contact death.
+Re-ran `npm run check`, `npm test` (68/68), and `npm run build` — all pass.
