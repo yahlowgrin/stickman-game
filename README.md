@@ -104,9 +104,16 @@ logic; this is what to click through by hand, ideally at a narrow phone width
   a spike that clipped the natural landing spot with no warning). It's a
   top-tier level in the fast-enemy section by design; the fixes removed the
   unfair parts, not the intended challenge.
-- **A handful of other hand-authored levels have the same "enemy patrols its
-  entire platform" pattern** that was fixed on levels 8, 13, 28, and 33
-  after user reports — found by an audit but not preemptively fixed, since
-  only those four were reported. See `docs/PROGRESS.md` for the full list.
+- **Every hand-authored level's enemy patrols now leave a genuine safe
+  landing zone** (at least 10px of real clearance beyond the player's own
+  40px width) — the "enemy patrols its entire platform" bug originally
+  found on levels 8, 13, 28, 33, and 38 was swept across all 40
+  hand-authored levels (bosses on 20/30/40 excepted, since patrolling
+  their whole arena is the intended fight). See `docs/PROGRESS.md` for
+  the full list of levels touched.
+- **The same zero-margin pattern exists on many procedurally generated
+  levels (41-200)**, discovered while auditing the hand-authored ones —
+  it's a property of the level generator itself, not a per-level bug, and
+  hasn't been fixed yet (a generator-level fix, not a level-by-level one).
 - Touch and keyboard drive the identical input controller and both were
   scripted end-to-end through completing level 1 and unlocking level 2.

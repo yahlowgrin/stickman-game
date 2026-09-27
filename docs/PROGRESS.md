@@ -635,3 +635,65 @@ punishing combination than levels 8/13/28's slower enemies.
   playtests where a right-only bot's strategy actually matches the level's
   geometry (33 now completes reliably; 38's remaining scripted-bot failures
   are explained above as a test-harness limitation, not a level bug).
+
+## Post-launch fixes: level 38 eased to "The Slow Lane" + the full zero-margin sweep
+
+- **Level 38** ("Speed Demons 8"), even after the earlier bug fix (widened
+  platform + moved spike), was still reported as too hard multiple times.
+  Per explicit user request, this one level (only) was turned into a
+  deliberate easy breather: both enemies' speed dropped from 3.8/3.6 to
+  1.2 (well under the Speed section's normal 3.5-4.5 range), and the level
+  was renamed from "Speed Demons 8" to "The Slow Lane" (via a one-off
+  special case in `SPEED_LEVEL_NAMES` rather than a per-level name field,
+  since names are derived from `HAND_AUTHORED_NAMES[id-1]`). Geometry
+  (platform widths, spike position, patrol confinement) is unchanged from
+  the earlier fix — only speed and name changed.
+- **The full "enemy patrols its entire platform with zero safe margin"
+  sweep**, previously flagged but not actioned pending confirmation, was
+  completed across all 22 remaining affected hand-authored levels (6, 9,
+  10, 11, 14, 15, 17, 18, 19, 22-27, 29, 32, 34-37, 39 — 55 individual
+  enemy/platform edits in total). Boss arenas (20, 30, 40) were
+  deliberately excluded: a boss patrolling its whole arena is the intended
+  fight, not the same "unfair, no-escape" bug.
+  - **Method**: a script matched every enemy to its platform and flagged
+    any whose best-side margin (patrol edge to platform edge) minus the
+    player's 40px width was under 10px of real slack — the same
+    computation used for levels 8/13/28/33/38.
+  - **Policy**: confine each flagged enemy to a minimal 32px patrol
+    hugging one edge of its platform, picking the edge that (a) protects
+    the spawn-adjacent landing zone on early platforms and (b) doesn't
+    force widening into a neighboring pit's space. Where the platform was
+    under 90px wide, it was widened to 90px (matching the ~18px-slack
+    precedent from the level 28/38 fixes) by extending on the side that
+    doesn't border a tight neighbor.
+  - **One collision found and fixed during this pass**: level 36 has two
+    narrow floating ground islands (`ground(230,70)` and `ground(350,50)`)
+    separated by only a 50px pit. Widening both to 90px using the generic
+    rule would have made them overlap by 10px. Fixed by having each
+    platform's *margin* grow into whichever neighboring pit had more
+    spare room (its own patrol hugging the shared, tighter boundary) —
+    `ground(230,70)` -> `ground(210,90)` (patrol hugs the shared-pit side,
+    margin grows into the *other*, roomier pit) and `ground(350,50)` ->
+    `ground(310,90)` (patrol hugs the world edge, margin grows into the
+    now-vacated shared pit). Final shared pit: 10px, thin but no overlap.
+  - **One spawn-zone regression found and fixed by the validator itself**:
+    level 35's enemy 3 was first confined to `(140, 172)` on
+    `platform(140, 180, 120)`, but 140 falls inside the mandatory
+    spawn-safety zone, and `npx tsx scripts/validate-levels.ts` correctly
+    rejected it ("Level 35: enemy 3 patrols the spawn area"). Re-confined
+    to the platform's other edge, `(228, 260)`, instead — the validator
+    catching this is a good sign the existing safety checks compose well
+    with this kind of scripted, large-scale edit.
+  - **Verified**: a fresh audit run over all 40 hand-authored levels
+    confirms zero remaining flagged enemies (excluding the 3 boss arenas).
+    `npx tsc --noEmit`, `npx tsx scripts/validate-levels.ts`, `npm test`
+    (77/77), and `npm run build` all pass.
+- **New finding, not yet fixed**: running the same audit script across all
+  200 levels (not just the 40 hand-authored ones) shows the identical
+  zero-margin pattern on effectively every procedurally generated level,
+  41-200. This is a property of `levelGenerator.ts` itself (it doesn't
+  apply this same margin check when placing enemies), not a per-level
+  authoring mistake, so it needs a generator-level fix rather than
+  another round of individual level edits. Flagged in the README's known
+  limitations; not actioned in this round since it wasn't part of what was
+  reported.
