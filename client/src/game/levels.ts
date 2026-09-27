@@ -563,12 +563,16 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
       ground(250, 150),
       platform(160, 340, 70),
       platform(270, 320, 110),
-      platform(150, 255, 90),
+      // Widened 90->120: both enemies originally patrolled their entire
+      // surface (0px safe margin, and fast at that -- 3.5-3.8 speed leaves
+      // almost no downtime). Confined to the far side from the landing
+      // direction, giving real slack (reported as "too hard").
+      platform(150, 255, 120),
       platform(280, 195, 100),
       platform(150, 135, 90),
     ],
     spikes: [],
-    enemies: [enemy(1, 400, 250, 400, 3.8), enemy(2, 255, 150, 240, 3.5)],
+    enemies: [enemy(1, 400, 320, 400, 3.5), enemy(2, 255, 150, 190, 3.2)],
     goal: goal(185, 135),
   }),
 
@@ -633,12 +637,20 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
     platforms: [
       ground(0, 400),
       platform(160, 340, 120),
-      platform(300, 280, 100),
+      // Widened 100->130 (extended toward p1, gap only shrinks): the enemy
+      // originally patrolled its entire surface at close to max speed
+      // (4.2), leaving no safe landing zone at all (reported as "too hard").
+      platform(270, 280, 130),
       platform(150, 210, 120),
       platform(300, 140, 100),
     ],
-    spikes: [spikes(150, 400, 250), spikes(200, 340, 30)],
-    enemies: [enemy(1, 280, 300, 400, 4.2), enemy(2, 210, 150, 270, 4)],
+    // The platform-top spike was shifted right (200->225): a natural,
+    // un-jumped fall from spawn lands right around x=160-205 on this
+    // platform, clipping the spike's old position with zero warning.
+    spikes: [spikes(150, 400, 250), spikes(225, 340, 30)],
+    // Confined to the far side from the landing direction, speed eased
+    // slightly (still clearly "fast" for this section).
+    enemies: [enemy(1, 280, 340, 400, 3.8), enemy(2, 210, 230, 270, 3.6)],
     goal: goal(340, 140),
   }),
 

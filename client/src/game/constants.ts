@@ -85,7 +85,7 @@ export const MIN_STANDABLE_WIDTH = 36;
 /** Enemies must stay slower than the player so it can always escape. */
 export const MAX_ENEMY_SPEED = 4.5;
 /** Minimum shooter cooldowns per projectile type (ticks). */
-export const MIN_SHOOT_COOLDOWN = { fire: 60, lightning: 50, toxic: 45 } as const;
+export const MIN_SHOOT_COOLDOWN = { fire: 60, lightning: 50, toxic: 45, ice: 50 } as const;
 /** Boss arenas need one continuous spike-free ground stretch at least this wide. */
 export const BOSS_ARENA_MIN_GROUND = 320;
 
@@ -95,15 +95,23 @@ export const SHOT_CHARGE_TICKS = 24;
 /** A shot is skipped if the player is this close to the muzzle horizontally. */
 export const NO_SHOT_DISTANCE = 60;
 
-export const PROJECTILE_SPEED = { fire: 3, lightning: 6, toxic: 3 } as const;
+export const PROJECTILE_SPEED = { fire: 3, lightning: 6, toxic: 3, ice: 3 } as const;
 export const TOXIC_LAUNCH_VY = -6;
 export const TOXIC_GRAVITY = 0.3;
+/** Ice balls are thrown in an arc too, like toxic blobs. */
+export const ICE_LAUNCH_VY = -6;
+export const ICE_GRAVITY = 0.3;
 
 export const PROJECTILE_SIZE = {
   fire: { width: 16, height: 16 },
   lightning: { width: 28, height: 9 },
   toxic: { width: 16, height: 16 },
+  ice: { width: 15, height: 17 },
 } as const;
+
+// Freezing (SPEC follow-up: ice section, levels 101-150) ------------------------
+/** Ticks the player is immobilized after an ice ball hits (movement/jump ignored, gravity still applies). */
+export const FREEZE_DURATION_TICKS = 90;
 
 // Bosses: escalation on each non-defeating hit (SPEC §11) -----------------------
 export const BOSS_SPEED_RAMP = 1.15;

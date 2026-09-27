@@ -74,6 +74,7 @@ export function useGameEngine({ initialLevelId = 1, paused = false, onEvents }: 
       playerEl.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`;
       playerEl.dataset.pose = getPlayerPose(state);
       playerEl.dataset.facing = p.facing === 1 ? "right" : "left";
+      playerEl.dataset.frozen = String(p.frozenTicks > 0);
     }
     for (const e of state.enemies) {
       const el = enemyEls.current.get(e.id);

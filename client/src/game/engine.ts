@@ -11,6 +11,8 @@ import {
   DEATH_TICKS,
   ENEMY_HEIGHT,
   ENEMY_WIDTH,
+  FREEZE_DURATION_TICKS,
+  ICE_LAUNCH_VY,
   MAX_ENEMY_SPEED,
   MIN_SHOOT_COOLDOWN,
   NO_SHOT_DISTANCE,
@@ -27,13 +29,13 @@ import { levelProvider } from "./levels";
 import {
   classifyEnemyContact,
   createPlayer,
+  hittingProjectiles,
   isProjectileInWorld,
   projectileHitsPlatform,
   stepEnemyPatrol,
   stepPlayer,
   stepProjectile,
   touchesGoal,
-  touchesProjectile,
   touchesSpike,
 } from "./physics";
 import type {
@@ -100,7 +102,7 @@ function stepEnemyShooting(
       x: muzzleX,
       y: e.y + e.height / 2 - size.height / 2,
       vx: PROJECTILE_SPEED[type] * e.dir,
-      vy: type === "toxic" ? TOXIC_LAUNCH_VY : 0,
+      vy: type === "toxic" ? TOXIC_LAUNCH_VY : type === "ice" ? ICE_LAUNCH_VY : 0,
       width: size.width,
       height: size.height,
     };
@@ -237,8 +239,9 @@ function stepPlaying(state: GameState, input: InputState): StepResult {
     return result.enemy;
   });
 
-  // Projectiles: move, then drop any that left the world or (toxic only) hit a platform.
-  const projectiles = [...state.projectiles.map(stepProjectile), ...fired].filter(
+  // Projectiles: move, then drop any that left the world or (toxic/ice, both
+  // thrown in an arc) hit a platform.
+  let projectiles = [...state.projectiles.map(stepProjectile), ...fired].filter(
     (p) => isProjectileInWorld(p) && !projectileHitsPlatform(p, level.platforms),
   );
 
@@ -246,7 +249,19 @@ function stepPlaying(state: GameState, input: InputState): StepResult {
 
   if (player.y > WORLD_HEIGHT) return die(next, "fall", events);
   if (touchesSpike(player, level)) return die(next, "spike", events);
-  if (touchesProjectile(player, projectiles)) return die(next, "projectile", events);
+
+  // Ice balls freeze (immobilize) rather than kill; everything else is lethal.
+  // A freeze doesn't end the tick, so a lethal hit in the same tick still wins.
+  const hits = hittingProjectiles(player, projectiles);
+  const lethalHit = hits.some((p) => p.type !== "ice");
+  if (lethalHit) return die(next, "projectile", events);
+  const iceHit = hits.find((p) => p.type === "ice");
+  if (iceHit) {
+    player = { ...player, frozenTicks: FREEZE_DURATION_TICKS };
+    projectiles = projectiles.filter((p) => p !== iceHit);
+    events.push({ type: "freeze" });
+    next = { ...next, player, projectiles };
+  }
 
   // Enemy contact: stomp from above damages, anything else kills.
   let stomped = false;

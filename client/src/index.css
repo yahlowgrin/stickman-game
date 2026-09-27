@@ -258,6 +258,48 @@ body {
   }
 }
 
+/* Frozen (hit by an ice ball): an icy block over the figure, limbs stop swinging. */
+.game-player .ice-block {
+  display: none;
+}
+
+.game-player[data-frozen="true"] .ice-block {
+  display: block;
+}
+
+.game-player[data-frozen="true"] .limb {
+  animation: none !important;
+}
+
+.ice-block-fill {
+  fill: rgba(186, 230, 253, 0.6);
+  stroke: #0c4a6e;
+  stroke-width: 2;
+}
+
+.ice-block-facet {
+  fill: #ffffff;
+  opacity: 0.4;
+}
+
+.ice-block-facet-2 {
+  opacity: 0.25;
+}
+
+.game-player[data-frozen="true"] .ice-block {
+  animation: ice-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes ice-shimmer {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* Enemies ------------------------------------------------------------------- */
 /* Kind (data-kind) sets the accent palette; boss (data-boss) darkens it and
  * adds a crown + HP pips. Shape and motion (not color alone) tell projectile
@@ -290,6 +332,12 @@ body {
   --enemy-glow: rgba(163, 230, 53, 0.7);
 }
 
+.game-enemy[data-kind="ice"] {
+  --enemy-fill: #7dd3fc;
+  --enemy-stroke: #0c4a6e;
+  --enemy-glow: rgba(224, 242, 254, 0.85);
+}
+
 .game-enemy[data-boss="true"] {
   --enemy-fill: #3f0d0d;
   --enemy-stroke: #1c0505;
@@ -308,6 +356,11 @@ body {
 .game-enemy[data-boss="true"][data-kind="toxic"] {
   --enemy-fill: #3f6212;
   --enemy-stroke: #1a2e05;
+}
+
+.game-enemy[data-boss="true"][data-kind="ice"] {
+  --enemy-fill: #0369a1;
+  --enemy-stroke: #082f49;
 }
 
 .game-enemy-figure {
@@ -448,7 +501,8 @@ body {
 
 .projectile[data-type="fire"] .shape-fire,
 .projectile[data-type="lightning"] .shape-lightning,
-.projectile[data-type="toxic"] .shape-toxic {
+.projectile[data-type="toxic"] .shape-toxic,
+.projectile[data-type="ice"] .shape-ice {
   display: block;
 }
 
@@ -496,6 +550,27 @@ body {
 .toxic-glow {
   fill: #ecfccb;
   opacity: 0.85;
+}
+
+.shape-ice {
+  filter: drop-shadow(0 0 4px rgba(224, 242, 254, 0.9));
+}
+
+.ice-shard {
+  fill: #bae6fd;
+  stroke: #0c4a6e;
+  stroke-width: 0.6;
+  stroke-linejoin: round;
+}
+
+.ice-facet {
+  fill: #e0f2fe;
+  opacity: 0.55;
+}
+
+.ice-facet-light {
+  fill: #ffffff;
+  opacity: 0.35;
 }
 
 /* HUD chrome ------------------------------------------------------------------ */
@@ -862,5 +937,9 @@ body {
   .game-enemy[data-invulnerable="true"] {
     animation: none;
     opacity: 0.55;
+  }
+  .game-player[data-frozen="true"] .ice-block {
+    animation: none;
+    opacity: 0.9;
   }
 }

@@ -30,6 +30,12 @@ export function Projectile({ slotRef }: { slotRef: (el: HTMLDivElement | null) =
         />
         <circle className="toxic-glow" cx="-1" cy="-1" r="2.4" />
       </svg>
+      {/* Ice: an angular thrown crystal shard. */}
+      <svg className="projectile-shape shape-ice" viewBox="-7.5 -8.5 15 17" preserveAspectRatio="none" aria-hidden="true">
+        <polygon className="ice-shard" points="0,-8.5 4,-4 3.2,4.5 0,8.5 -3.2,4.5 -4,-4" />
+        <polygon className="ice-facet" points="0,-8.5 4,-4 0,-1 -4,-4" />
+        <polygon className="ice-facet ice-facet-light" points="0,-1 4,-4 3.2,4.5 0,8.5" />
+      </svg>
     </div>
   );
 }

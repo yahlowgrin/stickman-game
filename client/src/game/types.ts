@@ -3,8 +3,8 @@
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
-export type ProjectileType = "fire" | "lightning" | "toxic";
-export type Section = "core" | "fire" | "speed" | "lightning" | "toxic";
+export type ProjectileType = "fire" | "lightning" | "toxic" | "ice";
+export type Section = "core" | "fire" | "speed" | "lightning" | "ice" | "toxic";
 
 export type EnemyDef = {
   id: number;
@@ -51,6 +51,8 @@ export type PlayerState = {
   coyoteTicks: number;
   /** Ticks left in which an early jump press is remembered until landing. */
   jumpBufferTicks: number;
+  /** Ticks left immobilized by an ice ball (movement and jump ignored; gravity still applies). */
+  frozenTicks: number;
 };
 
 export type EnemyState = {
@@ -106,6 +108,7 @@ export type GameEvent =
   | { type: "stomp"; enemyId: number; defeated: boolean; boss: boolean }
   | { type: "bossHit"; enemyId: number; hp: number; defeated: boolean }
   | { type: "shoot"; enemyId: number; projectileType: ProjectileType }
+  | { type: "freeze" }
   | { type: "death"; cause: DeathCause }
   | { type: "respawn" }
   | { type: "complete"; levelId: number }

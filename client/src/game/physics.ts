@@ -5,6 +5,7 @@ import {
   COYOTE_TICKS,
   GRAVITY,
   GROUND_Y,
+  ICE_GRAVITY,
   JUMP_BUFFER_TICKS,
   JUMP_VELOCITY,
   LAND_EVENT_MIN_VY,
@@ -72,6 +73,7 @@ export function createPlayer(): PlayerState {
     facing: 1,
     coyoteTicks: 0,
     jumpBufferTicks: 0,
+    frozenTicks: 0,
   };
 }
 
@@ -93,15 +95,19 @@ export function stepPlayer(
   const p: PlayerState = { ...prev };
   let jumped = false;
 
+  // Frozen (hit by an ice ball): ignore movement and jump input entirely,
+  // but gravity and falling still apply below as normal.
+  const frozen = p.frozenTicks > 0;
+  if (frozen) p.frozenTicks -= 1;
+
   // Horizontal intent.
-  const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const dir = frozen ? 0 : (input.right ? 1 : 0) - (input.left ? 1 : 0);
   p.vx = dir * MOVE_SPEED;
   if (dir !== 0) p.facing = dir > 0 ? 1 : -1;
 
   // Jump with buffering and coyote time.
-  p.jumpBufferTicks = input.jumpPressed
-    ? JUMP_BUFFER_TICKS
-    : Math.max(0, p.jumpBufferTicks - 1);
+  p.jumpBufferTicks =
+    !frozen && input.jumpPressed ? JUMP_BUFFER_TICKS : Math.max(0, p.jumpBufferTicks - 1);
   p.coyoteTicks = p.onGround ? COYOTE_TICKS : Math.max(0, p.coyoteTicks - 1);
   if (p.jumpBufferTicks > 0 && p.coyoteTicks > 0) {
     p.vy = JUMP_VELOCITY;
@@ -211,9 +217,12 @@ export function projectileRect(p: ProjectileState): Rect {
   return { x: p.x, y: p.y, width: p.width, height: p.height };
 }
 
-/** Move a projectile one tick; toxic blobs arc under gravity, others fly straight. */
+const ARC_GRAVITY: Partial<Record<ProjectileState["type"], number>> = { toxic: TOXIC_GRAVITY, ice: ICE_GRAVITY };
+
+/** Move a projectile one tick; toxic and ice arc under gravity, others fly straight. */
 export function stepProjectile(p: ProjectileState): ProjectileState {
-  const vy = p.type === "toxic" ? p.vy + TOXIC_GRAVITY : p.vy;
+  const gravity = ARC_GRAVITY[p.type];
+  const vy = gravity !== undefined ? p.vy + gravity : p.vy;
   return { ...p, x: p.x + p.vx, y: p.y + vy, vy };
 }
 
@@ -221,14 +230,22 @@ export function isProjectileInWorld(p: ProjectileState): boolean {
   return p.x + p.width > 0 && p.x < WORLD_WIDTH && p.y + p.height > 0 && p.y < WORLD_HEIGHT;
 }
 
-/** Only toxic projectiles are removed on hitting a platform (SPEC §11); others fly through. */
+/** Only arcing projectiles (toxic, ice) are removed on hitting a platform (SPEC §11); others fly through. */
 export function projectileHitsPlatform(p: ProjectileState, platforms: readonly Rect[]): boolean {
-  return p.type === "toxic" && platforms.some((s) => rectsOverlap(projectileRect(p), s));
+  return p.type in ARC_GRAVITY && platforms.some((s) => rectsOverlap(projectileRect(p), s));
+}
+
+/** All projectiles currently overlapping the player. */
+export function hittingProjectiles(
+  player: PlayerState,
+  projectiles: readonly ProjectileState[],
+): ProjectileState[] {
+  const r = playerRect(player);
+  return projectiles.filter((p) => rectsOverlap(r, projectileRect(p)));
 }
 
 export function touchesProjectile(player: PlayerState, projectiles: readonly ProjectileState[]): boolean {
-  const r = playerRect(player);
-  return projectiles.some((p) => rectsOverlap(r, projectileRect(p)));
+  return hittingProjectiles(player, projectiles).length > 0;
 }
 
 // Hazards and goal --------------------------------------------------------------

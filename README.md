@@ -1,11 +1,16 @@
 # Stickman Physics
 
-A browser-based 2D platformer with 200 levels across five sections (Core, Fire,
-Speed, Lightning, Toxic), shooters and escalating bosses, chiptune music and
-effects, touch controls, and saved progress. Frontend only — no backend,
+A browser-based 2D platformer with 200 levels across six sections (Core, Fire,
+Speed, Lightning, Ice, Toxic), shooters and escalating bosses, chiptune music
+and effects, touch controls, and saved progress. Frontend only — no backend,
 accounts, or payments. React 19 + TypeScript + Vite + Tailwind 4, rendered with
 DOM/SVG and a fixed 60 Hz simulation; the Web Audio API for sound (no audio
 files).
+
+Ice enemies (levels 101-150) throw ice balls that briefly freeze you in place
+(you can't move or jump for about 1.5s) instead of killing you outright — the
+one non-lethal hazard in the game. Everything else, including getting hit by
+something else while frozen, is still instant death as usual.
 
 The full design spec is in [`docs/SPEC.md`](docs/SPEC.md); implementation status
 and design decisions are in [`docs/PROGRESS.md`](docs/PROGRESS.md).
@@ -94,6 +99,14 @@ logic; this is what to click through by hand, ideally at a narrow phone width
 - **Some generated level names don't describe their layout** (e.g. a level
   named after rain might not be a "pits" template) — names and layout
   templates are chosen independently for levels 41–200.
-- None beyond the above — touch and keyboard drive the identical input
-  controller and both were scripted end-to-end through completing level 1 and
-  unlocking level 2.
+- **Level 38 ("Speed Demons 8") is still genuinely hard** even after fixing
+  two real bugs found there (an enemy patrolling with zero safe margin, and
+  a spike that clipped the natural landing spot with no warning). It's a
+  top-tier level in the fast-enemy section by design; the fixes removed the
+  unfair parts, not the intended challenge.
+- **A handful of other hand-authored levels have the same "enemy patrols its
+  entire platform" pattern** that was fixed on levels 8, 13, 28, and 33
+  after user reports — found by an audit but not preemptively fixed, since
+  only those four were reported. See `docs/PROGRESS.md` for the full list.
+- Touch and keyboard drive the identical input controller and both were
+  scripted end-to-end through completing level 1 and unlocking level 2.

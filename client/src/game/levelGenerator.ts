@@ -20,7 +20,7 @@ import {
 } from "./constants";
 import { bossArena, enemy, goal, ground, platform, spikes } from "./levelBuilders";
 import { isGround, overlapsHorizontally } from "./physics";
-import { bossHp, isBossLevel, sectionFor, sectionProgress, sectionProjectile } from "./sections";
+import { bossHp, isBossLevel, SECTION_RANGES, sectionFor, sectionProgress, sectionProjectile } from "./sections";
 import type { EnemyDef, Level, ProjectileType, Rect, Section } from "./types";
 import { findSpawnLanding, isGoalReachable, maxGap, validateLevel } from "./validation";
 
@@ -106,23 +106,33 @@ export function templateFor(id: number): TemplateName {
   return order[index % n];
 }
 
-const LIGHTNING_WORDS = {
-  first: ["Static", "Voltage", "Thunder", "Spark", "Surge", "Ion", "Arc", "Storm", "Charged", "Plasma", "Neon", "Tesla"],
-  second: ["Climb", "Ladder", "Steps", "Run", "Alley", "Heights", "Gauntlet", "Bridge", "Maze", "Tower", "Leap", "Crossing"],
+type GeneratedSection = "lightning" | "ice" | "toxic";
+
+const SECTION_WORDS: Record<GeneratedSection, { first: string[]; second: string[] }> = {
+  lightning: {
+    first: ["Static", "Voltage", "Thunder", "Spark", "Surge", "Ion", "Arc", "Storm", "Charged", "Plasma", "Neon", "Tesla"],
+    second: ["Climb", "Ladder", "Steps", "Run", "Alley", "Heights", "Gauntlet", "Bridge", "Maze", "Tower", "Leap", "Crossing"],
+  },
+  ice: {
+    first: ["Frost", "Glacial", "Frozen", "Arctic", "Chill", "Rime", "Polar", "Icicle", "Blizzard", "Crystal", "Winter", "Sleet"],
+    second: ["Slope", "Path", "Drift", "Cavern", "Ridge", "Spire", "Descent", "Bridge", "Passage", "Cliffs", "Traverse", "Crossing"],
+  },
+  toxic: {
+    first: ["Sludge", "Acid", "Toxic", "Venom", "Slime", "Blight", "Miasma", "Ooze", "Corrosive", "Fungal", "Bile", "Murk"],
+    second: ["Steps", "Rain", "Pits", "Marsh", "Ladder", "Hollow", "Falls", "Spire", "Sprint", "Swamp", "Descent", "Crossing"],
+  },
 };
-const TOXIC_WORDS = {
-  first: ["Sludge", "Acid", "Toxic", "Venom", "Slime", "Blight", "Miasma", "Ooze", "Corrosive", "Fungal", "Bile", "Murk"],
-  second: ["Steps", "Rain", "Pits", "Marsh", "Ladder", "Hollow", "Falls", "Spire", "Sprint", "Swamp", "Descent", "Crossing"],
-};
+const NAME_SEED: Record<GeneratedSection, number> = { lightning: 4242, ice: 7373, toxic: 5151 };
+const BOSS_NAME: Record<GeneratedSection, string> = { lightning: "Thunder God", ice: "Frost King", toxic: "Poison King" };
 
 const nameCache = new Map<Section, string[]>();
 
-function namePool(section: "lightning" | "toxic"): string[] {
+function namePool(section: GeneratedSection): string[] {
   let pool = nameCache.get(section);
   if (!pool) {
-    const words = section === "lightning" ? LIGHTNING_WORDS : TOXIC_WORDS;
+    const words = SECTION_WORDS[section];
     const combos = words.first.flatMap((a) => words.second.map((b) => `${a} ${b}`));
-    pool = new Rng(section === "lightning" ? 4242 : 5151).shuffle(combos);
+    pool = new Rng(NAME_SEED[section]).shuffle(combos);
     nameCache.set(section, pool);
   }
   return pool;
@@ -130,15 +140,19 @@ function namePool(section: "lightning" | "toxic"): string[] {
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
+function isGeneratedSection(section: Section): section is GeneratedSection {
+  return section === "lightning" || section === "ice" || section === "toxic";
+}
+
 /** Deterministic, unique themed name for a generated level. */
 export function generatedLevelName(id: number): string {
   const section = sectionFor(id);
-  if (section !== "lightning" && section !== "toxic") throw new Error(`Level ${id} is hand-authored`);
-  const first = section === "lightning" ? 41 : 101;
+  if (!isGeneratedSection(section)) throw new Error(`Level ${id} is hand-authored`);
+  const [first] = SECTION_RANGES[section];
   if (isBossLevel(id)) {
     if (id === TOTAL_LEVELS) return "The Final Poison King";
     const nth = (id - (first - 1)) / 10; // 1-based boss number within the section
-    return `${section === "lightning" ? "Thunder God" : "Poison King"} ${ROMAN[nth - 1]}`;
+    return `${BOSS_NAME[section]} ${ROMAN[nth - 1]}`;
   }
   // Index among the section's non-boss levels.
   const bossesBefore = Math.floor((id - (first - 1)) / 10);
@@ -542,15 +556,20 @@ const bossArenaTemplate: TemplateFn = (ctx) => {
   const sideTop = snap(rng.range(290, 310));
   const topTop = sideTop - snap(rng.range(75, 85));
   const extra = rng.chance(0.5) ? [platform(snap(rng.range(160, 170)), 335, 70)] : [];
-  const toxic = ctx.section === "toxic";
+  // Later sections' bosses start a little faster and ramp their fire rate a
+  // little harder, since the player has more experience by then.
+  const tuning = { lightning: [1.5, 2.5, 70], ice: [1.55, 2.65, 68], toxic: [1.6, 2.8, 65] }[
+    ctx.section as "lightning" | "ice" | "toxic"
+  ] ?? [1.5, 2.5, 70];
+  const [speedStart, speedEnd, cooldownEnd] = tuning;
   return bossArena(
     {
-      speed: Math.round(lerp(toxic ? 1.6 : 1.5, toxic ? 2.8 : 2.5, u) * 10) / 10,
+      speed: Math.round(lerp(speedStart, speedEnd, u) * 10) / 10,
       hp: bossHp(ctx.id),
       projectileType: ctx.projectile,
       shootCooldown: Math.max(
         MIN_SHOOT_COOLDOWN[ctx.projectile ?? "lightning"],
-        Math.round(lerp(130, toxic ? 65 : 70, u)),
+        Math.round(lerp(130, cooldownEnd, u)),
       ),
     },
     sideTop,

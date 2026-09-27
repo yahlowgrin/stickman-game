@@ -8,6 +8,7 @@ export function sectionFor(id: number): Section {
   if (id <= 30) return "fire";
   if (id <= 40) return "speed";
   if (id <= 100) return "lightning";
+  if (id <= 150) return "ice";
   return "toxic";
 }
 
@@ -16,7 +17,8 @@ export const SECTION_RANGES: Record<Section, readonly [number, number]> = {
   fire: [21, 30],
   speed: [31, 40],
   lightning: [41, 100],
-  toxic: [101, 200],
+  ice: [101, 150],
+  toxic: [151, 200],
 };
 
 export const SECTION_LABELS: Record<Section, string> = {
@@ -24,6 +26,7 @@ export const SECTION_LABELS: Record<Section, string> = {
   fire: "Fire",
   speed: "Speed",
   lightning: "Lightning",
+  ice: "Ice",
   toxic: "Toxic",
 };
 
@@ -31,6 +34,7 @@ export const SECTION_LABELS: Record<Section, string> = {
 export function sectionProjectile(section: Section): ProjectileType | undefined {
   if (section === "fire") return "fire";
   if (section === "lightning") return "lightning";
+  if (section === "ice") return "ice";
   if (section === "toxic") return "toxic";
   return undefined;
 }
@@ -45,10 +49,16 @@ export function isBossLevel(id: number): boolean {
   return id >= FIRST_BOSS_LEVEL && id <= TOTAL_LEVELS && id % BOSS_LEVEL_INTERVAL === 0;
 }
 
-/** Required boss HP per the SPEC §11 table. */
+/** Required boss HP per level. Ice (110-150) and toxic (160-200) each ramp
+ * independently within their own, now-shorter ranges since ice replaced the
+ * first half of the old toxic section. */
+const ICE_BOSS_HP: Record<number, number> = { 110: 6, 120: 7, 130: 7, 140: 8, 150: 9 };
+const TOXIC_BOSS_HP: Record<number, number> = { 160: 6, 170: 7, 180: 8, 190: 9, 200: 10 };
+
 export function bossHp(id: number): number {
   if (id === 20) return 3;
   if (id === 30 || id === 40) return 5;
   if (id <= 100) return 5 + Math.floor(((id - 50) / 50) * 3); // 50 → 5 … 100 → 8
-  return 6 + Math.floor(((id - 110) / 90) * 4 + 1e-9); // 110 → 6 … 190 → 9, 200 → 10
+  if (id in ICE_BOSS_HP) return ICE_BOSS_HP[id];
+  return TOXIC_BOSS_HP[id];
 }

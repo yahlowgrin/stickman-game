@@ -501,3 +501,137 @@ position would eventually be swept). Level 28's remaining occasional deaths
 under a naive bot are from dodging the fire shooters' projectiles — a
 separate, intentional mechanic (charge-glow telegraph, timed dodge), not the
 body-collision bug being fixed here.
+
+## Post-launch feature: ice section (levels 101-150) replaces toxic there
+
+User request: instead of another poison-themed stretch, levels 101-150 became
+an **ice** section — enemies throw ice balls that briefly **freeze** the
+player (immobilize, don't kill) instead of another lethal projectile. Toxic
+now covers only 151-200 (still ending in the same final boss).
+
+- **New mechanic, not just a reskin**: `PlayerState.frozenTicks` (set to
+  `FREEZE_DURATION_TICKS` = 90 ticks / 1.5s on an ice-ball hit). While > 0,
+  `stepPlayer` (physics.ts) zeroes horizontal input and blocks the jump
+  buffer entirely, but gravity and falling are untouched — you're a statue,
+  not paused. Being hit by anything else (spike, enemy, fire/lightning/toxic
+  projectile) while frozen still kills you normally; the ice ball itself is
+  the only non-lethal hazard in the game.
+- **Engine**: `stepPlaying` now separates projectile hits into lethal
+  (any non-ice type → `die()`, unchanged) and ice (→ set `frozenTicks`,
+  consume that one projectile, emit a new `freeze` event, tick continues
+  normally — doesn't end the tick like death does).
+- **Physics**: ice balls arc under gravity exactly like toxic blobs
+  (`ICE_LAUNCH_VY`/`ICE_GRAVITY`, same values as toxic's, separate named
+  constants for independent tuning) and are removed on hitting a platform,
+  same as toxic. `ARC_GRAVITY` in physics.ts now generalizes what used to be
+  a `type === "toxic"` special case to any arcing type.
+- **Types/sections**: `ProjectileType`/`Section` both gained `"ice"`.
+  `sectionFor`: lightning ≤100, ice ≤150, toxic ≤200 (was ≤100/≤200).
+  `SECTION_RANGES.ice = [101, 150]`, `toxic` shrunk to `[151, 200]`.
+  Boss HP is now two independent small lookup tables instead of one formula
+  (`ICE_BOSS_HP` for 110-150, `TOXIC_BOSS_HP` for 160-200, both hand-picked
+  to ramp 6→9 and 6→10 respectively — the toxic table's values at each id
+  are unchanged from before, just re-scoped to the shorter range).
+- **Generator**: `generatedLevelName` and `namePool` generalized from a
+  lightning/toxic union to `GeneratedSection = "lightning" | "ice" | "toxic"`
+  with per-section word lists/seeds/boss-name lookup tables instead of
+  ternaries. Ice boss name: "Frost King I-V" (110/120/130/140/150); level 200
+  is still "The Final Poison King" (unchanged — toxic still ends the game).
+  Ice word list: Frost/Glacial/Frozen/Arctic/... + Slope/Path/Drift/Cavern/...
+  (e.g. "Arctic Slope", level 101). Boss-arena speed/cooldown tuning
+  generalized from a `toxic` boolean to a per-section lookup
+  (lightning/ice/toxic), ice sitting between the two as intended.
+- **Audio**: a fifth `SECTION_THEMES` entry (D5 root, 135bpm, brighter/major
+  pattern than lightning's or toxic's — `Record<Section, SectionTheme>`
+  forced this via a compile error the moment `Section` grew a member, which
+  is exactly the point of modeling it that way). New effects: `playShoot`
+  gets an "ice" case (bright glassy triangle chime, distinct from fire's low
+  square, lightning's zap, and toxic's squelch) and a dedicated `playFreeze`
+  (descending icy chime + shimmer) for the new `freeze` event.
+- **Visuals**: `data-kind="ice"` enemy palette (light frost blue,
+  `#7dd3fc`/`#0c4a6e`), matching darker boss variant. New `Projectile.tsx`
+  shape: an angular crystal shard (not round like fire/toxic, not a zigzag
+  like lightning — satisfies SPEC §16's "shape and motion, not color alone").
+  Frozen player: an ice-block SVG overlay (`.ice-block`, toggled by
+  `data-frozen` set imperatively in `useGameEngine.renderFrame` from
+  `player.frozenTicks > 0`) with a subtle shimmer, `prefers-reduced-motion`
+  covered (static opacity instead of the shimmer keyframe), and limb-swing
+  animation forced off while frozen so the figure genuinely looks stuck.
+- **Tests**: new `tests/freeze.test.ts` (9 tests) — freezing doesn't kill or
+  end the tick, movement/jump ignored while frozen, gravity still applies,
+  the freeze wears off on its own, a lethal hazard still kills a frozen
+  player, ice arcs like toxic, ice is removed on platform hit, section
+  boundaries (101-150 ice / 151-200 toxic), and both new boss-HP tables.
+  Updated two existing tests that hardcoded the old lightning/toxic-only
+  section list.
+
+## Post-launch fixes: levels 33 and 38 (same bug as 8/13/28) + a hidden spike bug
+
+Same root cause as the earlier level 8/13/28 fixes, found via the same
+"does a genuinely safe standing zone exist" method — both are "Speed Demons"
+levels, and both had enemies patrolling their **entire** platform at
+close-to-maximum speed (3.5-4.2, vs. the 4.5 ceiling), which is an even more
+punishing combination than levels 8/13/28's slower enemies.
+
+- **Level 33**: widened its 90px enemy platform to 120px; confined both
+  enemies (one on open ground, one on a raised platform) to the far side
+  from their landing direction, eased speed slightly (3.8/3.5 → 3.5/3.2).
+  Playtested: 3/3 scripted attempts now complete (was failing before).
+- **Level 38**: widened its 100px enemy platform to 130px (extended toward
+  its neighbor, gap only shrinks); confined the enemy there and eased speed
+  (4.2 → 3.8). The *second* enemy's platform was already 120px, wide enough
+  once re-confined (4.0 → 3.6, patrol shrunk to the platform's minimum).
+- **Real bug found while verifying level 38, not present in 33**: the
+  player's *natural, un-jumped fall from spawn* lands right around x=160-205
+  on the level's first platform — and a pre-existing spike on that same
+  platform sat at x=200-230, clipping that exact landing zone by a few
+  pixels with zero warning or reaction time. Moved the spike to x=225-255,
+  clear of the natural landing path. This wasn't something my patrol-margin
+  fix touched or caused — it was there in the original level, just never
+  surfaced in earlier testing because the (also broken) enemies killed test
+  runs before ever reaching that point.
+- **A dead end worth recording**: my first attempt at level 38's second
+  enemy confined it to x=150-190 (mirroring the "confine to the far side"
+  pattern used everywhere else). That accidentally placed it squarely in the
+  path of the player's spawn-fall arc (which passes near x=110-155 at that
+  enemy's height on its way down), and because the range was so narrow
+  (40px) the enemy's fast back-and-forth patrol was *almost always*
+  somewhere in that exact band — worse than the original wide, slow-moving
+  range in one specific way, despite being strictly safer everywhere else.
+  Re-confined it to x=230-270 instead (clear of both the spawn-fall path and
+  the platform-2 landing zone). Lesson for any future "confine to the far
+  side" fix: also check the fix doesn't newly overlap the spawn-fall
+  corridor, not just the immediate landing zone it was aimed at.
+- Verified all four safe zones directly (stand still 5 simulated seconds,
+  no death) rather than relying on scripted-bot completions, which continue
+  to be an unreliable signal for anything requiring a leftward jump or
+  precise spike-timing — documented in the level 13/28 section above, and
+  re-confirmed here (a right-only bot can never complete a level requiring a
+  leftward jump partway through, which is a test-harness limitation, not a
+  level bug).
+- **Not further eased**: level 38 remains genuinely difficult after both
+  fixes — it's a top-tier "Speed Demons" level by design, with fast enemies,
+  a spike, and required direction changes. The two bugs found (zero-margin
+  patrol, spike-clipped landing) are fixed and verified; remaining
+  difficulty is intended for this level's place in the section, not
+  something addressed here without more specific feedback on what part
+  still feels unfair.
+- Same ~30-enemy-placement systemic audit from before still applies to the
+  levels not yet touched (6, 9, 10, 11, 14, 15, 17-19, 22-27, 29, 32, 34-37,
+  39) — none of those were reported this round, so none were changed.
+
+## Test status (after this round of fixes/features)
+
+- `npm run check`: pass — "Level validation passed: 200 level(s) checked
+  (40 hand-authored)".
+- `npm test`: 77/77 pass (68 previous + 9 new freeze tests).
+- `npm run build`: pass (plain and with `BASE_PATH=/stickman-game/`).
+- Chromium: levels 101, 110, 150 (ice enemy, Frost King boss with crown +
+  correct pip count, themed level name) and the freeze visual (ice-block
+  overlay, confirmed via `data-frozen`) all screenshotted correctly with no
+  console errors; levels 8, 13, 28, 33, 38 re-verified with the direct
+  "stand still 5 simulated seconds in the fixed safe zone" method (the
+  reliable signal established in the level 8 fix) plus scripted browser
+  playtests where a right-only bot's strategy actually matches the level's
+  geometry (33 now completes reliably; 38's remaining scripted-bot failures
+  are explained above as a test-harness limitation, not a level bug).

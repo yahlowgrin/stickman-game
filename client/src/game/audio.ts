@@ -54,6 +54,12 @@ export const SECTION_THEMES: Record<Section, SectionTheme> = {
     lead: [s(0), s(3), s(7), s(10), s(7), s(3), s(0), s(null), s(0), s(6), s(7), s(10), s(7), s(6), s(3), s(null)],
     bass: [s(0, 4), s(0, 4), s(3, 4), s(3, 4)],
   },
+  ice: {
+    rootHz: 587.33, // D5 -- bright and crisp, distinct from lightning's cyan energy
+    tempoBpm: 135,
+    lead: [s(0), s(4), s(7), s(11), s(7), s(4), s(0), s(null), s(4), s(7), s(12), s(11), s(7), s(4), s(0), s(null)],
+    bass: [s(0, 4), s(7, 4), s(4, 4), s(7, 4)],
+  },
   toxic: {
     rootHz: 311.13, // Eb4
     tempoBpm: 128,
@@ -296,9 +302,18 @@ export function createAudioEngine(): AudioEngine {
       playTone(destination, { type: "square", freq: 260, freqRampTo: 140, startTime: time, duration: 0.07, gain: 0.04 });
     } else if (type === "lightning") {
       playTone(destination, { type: "square", freq: 1200, freqRampTo: 700, startTime: time, duration: 0.04, gain: 0.045 });
+    } else if (type === "ice") {
+      // Bright, glassy chime -- distinct from toxic's low squelch.
+      playTone(destination, { type: "triangle", freq: 1400, freqRampTo: 1000, startTime: time, duration: 0.06, gain: 0.04 });
     } else {
       playTone(destination, { type: "triangle", freq: 170, freqRampTo: 110, startTime: time, duration: 0.09, gain: 0.04 });
     }
+  }
+
+  /** Descending icy chime + a short shimmer, played when an ice ball freezes the player. */
+  function playFreeze(destination: GainNode, time: number): void {
+    playTone(destination, { type: "triangle", freq: 1046.5, freqRampTo: 523.25, startTime: time, duration: 0.3, gain: 0.06 });
+    playTone(destination, { type: "sine", freq: 1568.0, startTime: time + 0.05, duration: 0.2, gain: 0.03 });
   }
 
   function playEvents(events: GameEvent[]): void {
@@ -325,6 +340,9 @@ export function createAudioEngine(): AudioEngine {
           break;
         case "shoot":
           playShoot(dest, now, event.projectileType);
+          break;
+        case "freeze":
+          playFreeze(dest, now);
           break;
         case "death":
           playTone(dest, { type: "sawtooth", freq: 300, freqRampTo: 60, startTime: now, duration: 0.28, gain: 0.07 });

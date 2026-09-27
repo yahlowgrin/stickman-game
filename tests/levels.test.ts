@@ -81,7 +81,7 @@ test("shooters use their section's projectile type", () => {
   for (const l of all()) {
     for (const e of l.enemies) {
       if (!e.projectileType) continue;
-      const expected = { fire: "fire", lightning: "lightning", toxic: "toxic" }[l.section as string];
+      const expected = { fire: "fire", lightning: "lightning", ice: "ice", toxic: "toxic" }[l.section as string];
       assert.equal(e.projectileType, expected, `level ${l.id} enemy ${e.id}`);
     }
   }
@@ -204,5 +204,5 @@ test("generated levels are all within the world and every section is represented
     sections.add(l.section);
     assert.equal(l.id, id);
   }
-  assert.deepEqual([...sections].sort(), ["lightning", "toxic"]);
+  assert.deepEqual([...sections].sort(), ["ice", "lightning", "toxic"]);
 });
