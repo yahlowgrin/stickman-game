@@ -88,3 +88,31 @@ export const MAX_ENEMY_SPEED = 4.5;
 export const MIN_SHOOT_COOLDOWN = { fire: 60, lightning: 50, toxic: 45 } as const;
 /** Boss arenas need one continuous spike-free ground stretch at least this wide. */
 export const BOSS_ARENA_MIN_GROUND = 320;
+
+// Shooters and projectiles (SPEC §11) -------------------------------------------
+/** Visible charge-up before a shooter fires (~0.4 s). */
+export const SHOT_CHARGE_TICKS = 24;
+/** A shot is skipped if the player is this close to the muzzle horizontally. */
+export const NO_SHOT_DISTANCE = 60;
+
+export const PROJECTILE_SPEED = { fire: 3, lightning: 6, toxic: 3 } as const;
+export const TOXIC_LAUNCH_VY = -6;
+export const TOXIC_GRAVITY = 0.3;
+
+export const PROJECTILE_SIZE = {
+  fire: { width: 16, height: 16 },
+  lightning: { width: 28, height: 9 },
+  toxic: { width: 16, height: 16 },
+} as const;
+
+// Bosses: escalation on each non-defeating hit (SPEC §11) -----------------------
+export const BOSS_SPEED_RAMP = 1.15;
+export const BOSS_COOLDOWN_RAMP = 0.85;
+
+// Fast enemies (SPEC §11) ---------------------------------------------------------
+/** Enemies at or above this speed render as the "fast" visual variant. */
+export const FAST_ENEMY_SPEED_THRESHOLD = 3.5;
+
+// Rendering ---------------------------------------------------------------------
+/** Fixed DOM pool size for projectiles; comfortably above any level's peak count. */
+export const MAX_RENDERED_PROJECTILES = 32;

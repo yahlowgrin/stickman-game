@@ -4,6 +4,7 @@ import { Enemy } from "./Enemy";
 import { Goal } from "./Goal";
 import { Platform } from "./Platform";
 import { Player } from "./Player";
+import { Projectile } from "./Projectile";
 import { Spike } from "./Spike";
 
 /** The 400×500 logical world: static level geometry plus imperatively animated entities. */
@@ -25,6 +26,9 @@ export function GameWorld({ engine }: { engine: GameEngine }) {
       <Goal rect={level.goal} goalRef={engine.goalRef} />
       {level.enemies.map((def) => (
         <Enemy key={def.id} enemy={createEnemyState(def)} enemyRef={engine.registerEnemy(def.id)} />
+      ))}
+      {Array.from({ length: engine.projectilePoolSize }, (_, i) => (
+        <Projectile key={i} slotRef={engine.registerProjectileSlot(i)} />
       ))}
       <Player playerRef={engine.playerRef} />
     </div>

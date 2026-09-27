@@ -2,24 +2,38 @@
 // returns a new GameState plus the events that happened during the tick.
 
 import {
+  BOSS_COOLDOWN_RAMP,
   BOSS_HEIGHT,
   BOSS_INVULN_TICKS,
+  BOSS_SPEED_RAMP,
   BOSS_WIDTH,
   COMPLETE_TICKS,
   DEATH_TICKS,
   ENEMY_HEIGHT,
   ENEMY_WIDTH,
+  MAX_ENEMY_SPEED,
+  MIN_SHOOT_COOLDOWN,
+  NO_SHOT_DISTANCE,
   PLAYER_HEIGHT,
+  PLAYER_WIDTH,
+  PROJECTILE_SIZE,
+  PROJECTILE_SPEED,
+  SHOT_CHARGE_TICKS,
   STOMP_BOUNCE_VELOCITY,
+  TOXIC_LAUNCH_VY,
   WORLD_HEIGHT,
 } from "./constants";
 import { levelProvider } from "./levels";
 import {
   classifyEnemyContact,
   createPlayer,
+  isProjectileInWorld,
+  projectileHitsPlatform,
   stepEnemyPatrol,
   stepPlayer,
+  stepProjectile,
   touchesGoal,
+  touchesProjectile,
   touchesSpike,
 } from "./physics";
 import type {
@@ -32,6 +46,8 @@ import type {
   Level,
   LevelProvider,
   PlayerPose,
+  PlayerState,
+  ProjectileState,
 } from "./types";
 
 export const NO_INPUT: InputState = { left: false, right: false, jumpPressed: false };
@@ -53,7 +69,50 @@ export function createEnemyState(def: EnemyDef): EnemyState {
     cooldown: def.shootCooldown ?? 0,
     chargeTicks: 0,
     invulnTicks: 0,
+    fireInterval: def.shootCooldown ?? 0,
   };
+}
+
+/**
+ * Advance a shooter's charge/cooldown state machine by one tick. Returns the
+ * updated enemy and a freshly spawned projectile, if this was the tick it fired.
+ *
+ * Cycle: cooldown counts down to 0 -> if the player isn't within the no-shot
+ * distance, start a visible charge -> charge counts down to 0 -> fire and
+ * reset the cooldown. Skipped shots (player too close) simply retry next tick.
+ */
+function stepEnemyShooting(
+  e: EnemyState,
+  player: PlayerState,
+  projectileId: number,
+): { enemy: EnemyState; projectile: ProjectileState | null } {
+  const type = e.def.projectileType;
+  if (!e.alive || !type) return { enemy: e, projectile: null };
+
+  if (e.chargeTicks > 0) {
+    const chargeTicks = e.chargeTicks - 1;
+    if (chargeTicks > 0) return { enemy: { ...e, chargeTicks }, projectile: null };
+    const size = PROJECTILE_SIZE[type];
+    const muzzleX = e.dir > 0 ? e.x + e.width : e.x - size.width;
+    const projectile: ProjectileState = {
+      id: projectileId,
+      type,
+      x: muzzleX,
+      y: e.y + e.height / 2 - size.height / 2,
+      vx: PROJECTILE_SPEED[type] * e.dir,
+      vy: type === "toxic" ? TOXIC_LAUNCH_VY : 0,
+      width: size.width,
+      height: size.height,
+    };
+    return { enemy: { ...e, chargeTicks: 0, cooldown: e.fireInterval }, projectile };
+  }
+
+  if (e.cooldown > 0) return { enemy: { ...e, cooldown: e.cooldown - 1 }, projectile: null };
+
+  const muzzleX = e.dir > 0 ? e.x + e.width : e.x;
+  const playerCenterX = player.x + PLAYER_WIDTH / 2;
+  if (Math.abs(playerCenterX - muzzleX) < NO_SHOT_DISTANCE) return { enemy: e, projectile: null };
+  return { enemy: { ...e, chargeTicks: SHOT_CHARGE_TICKS }, projectile: null };
 }
 
 /** Fresh state for a level: player at spawn, enemies/projectiles/timers reset. */
@@ -141,6 +200,17 @@ function die(state: GameState, cause: DeathCause, events: GameEvent[]): StepResu
   };
 }
 
+/** Boss escalation on a hit that doesn't defeat it: faster and quicker to fire. */
+function ramp(e: EnemyState): Pick<EnemyState, "speed" | "fireInterval"> {
+  const type = e.def.projectileType;
+  return {
+    speed: Math.min(MAX_ENEMY_SPEED, Math.round(e.speed * BOSS_SPEED_RAMP * 100) / 100),
+    fireInterval: type
+      ? Math.max(MIN_SHOOT_COOLDOWN[type], Math.round(e.fireInterval * BOSS_COOLDOWN_RAMP))
+      : e.fireInterval,
+  };
+}
+
 function stepPlaying(state: GameState, input: InputState): StepResult {
   const events: GameEvent[] = [];
   const { level } = state;
@@ -153,10 +223,30 @@ function stepPlaying(state: GameState, input: InputState): StepResult {
   if (moved.landed) events.push({ type: "land" });
 
   let enemies = state.enemies.map(stepEnemyPatrol);
-  let next: GameState = { ...state, player, enemies, tick: state.tick + 1 };
+
+  // Shooters: advance charge/cooldown and collect any newly fired projectiles.
+  let nextProjectileId = state.nextProjectileId;
+  const fired: ProjectileState[] = [];
+  enemies = enemies.map((e) => {
+    const result = stepEnemyShooting(e, player, nextProjectileId);
+    if (result.projectile) {
+      fired.push(result.projectile);
+      events.push({ type: "shoot", enemyId: e.id, projectileType: result.projectile.type });
+      nextProjectileId++;
+    }
+    return result.enemy;
+  });
+
+  // Projectiles: move, then drop any that left the world or (toxic only) hit a platform.
+  const projectiles = [...state.projectiles.map(stepProjectile), ...fired].filter(
+    (p) => isProjectileInWorld(p) && !projectileHitsPlatform(p, level.platforms),
+  );
+
+  let next: GameState = { ...state, player, enemies, projectiles, nextProjectileId, tick: state.tick + 1 };
 
   if (player.y > WORLD_HEIGHT) return die(next, "fall", events);
   if (touchesSpike(player, level)) return die(next, "spike", events);
+  if (touchesProjectile(player, projectiles)) return die(next, "projectile", events);
 
   // Enemy contact: stomp from above damages, anything else kills.
   let stomped = false;
@@ -169,12 +259,15 @@ function stepPlaying(state: GameState, input: InputState): StepResult {
     if (e.invulnTicks > 0) return e;
     const hp = e.hp - 1;
     const boss = e.def.isBoss === true;
-    events.push({ type: "stomp", enemyId: e.id, defeated: hp <= 0, boss });
+    const defeated = hp <= 0;
+    events.push({ type: "stomp", enemyId: e.id, defeated, boss });
+    if (boss) events.push({ type: "bossHit", enemyId: e.id, hp, defeated });
     return {
       ...e,
       hp,
       alive: hp > 0,
       invulnTicks: boss && hp > 0 ? BOSS_INVULN_TICKS : 0,
+      ...(boss && hp > 0 ? ramp(e) : null),
     };
   });
   next = { ...next, player, enemies };

@@ -1,4 +1,5 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { MAX_RENDERED_PROJECTILES } from "@/game/constants";
 import { createGameState, getPlayerPose, isGoalLocked, playAgain as playAgainState, stepGame } from "@/game/engine";
 import { createInputController, type InputController } from "@/game/input";
 import { getLevel } from "@/game/levels";
@@ -15,6 +16,8 @@ export type GameEngine = {
   playerRef: RefObject<HTMLDivElement | null>;
   goalRef: RefObject<HTMLDivElement | null>;
   registerEnemy: (id: number) => (el: HTMLDivElement | null) => void;
+  registerProjectileSlot: (index: number) => (el: HTMLDivElement | null) => void;
+  projectilePoolSize: number;
   playAgain: () => void;
 };
 
@@ -43,11 +46,19 @@ export function useGameEngine({ initialLevelId = 1, paused = false, onEvents }: 
   const playerRef = useRef<HTMLDivElement>(null);
   const goalRef = useRef<HTMLDivElement>(null);
   const enemyEls = useRef(new Map<number, HTMLDivElement>());
+  const projectileEls = useRef<(HTMLDivElement | null)[]>([]);
 
   const registerEnemy = useCallback(
     (id: number) => (el: HTMLDivElement | null) => {
       if (el) enemyEls.current.set(id, el);
       else enemyEls.current.delete(id);
+    },
+    [],
+  );
+
+  const registerProjectileSlot = useCallback(
+    (index: number) => (el: HTMLDivElement | null) => {
+      projectileEls.current[index] = el;
     },
     [],
   );
@@ -69,7 +80,36 @@ export function useGameEngine({ initialLevelId = 1, paused = false, onEvents }: 
       el.dataset.dir = e.dir === 1 ? "right" : "left";
       el.dataset.alive = String(e.alive);
       el.dataset.invulnerable = String(e.invulnTicks > 0);
+      el.dataset.charging = String(e.chargeTicks > 0);
+      if (e.def.isBoss) {
+        const pips = el.getElementsByClassName("hp-pip");
+        for (let i = 0; i < pips.length; i++) pips[i].classList.toggle("filled", i < e.hp);
+      }
     }
+
+    const pool = projectileEls.current;
+    const projectiles = state.projectiles;
+    for (let i = 0; i < pool.length; i++) {
+      const el = pool[i];
+      if (!el) continue;
+      const p = projectiles[i];
+      if (!p) {
+        el.dataset.active = "false";
+        continue;
+      }
+      el.dataset.active = "true";
+      el.dataset.type = p.type;
+      el.dataset.dir = p.vx >= 0 ? "right" : "left";
+      el.style.width = `${p.width}px`;
+      el.style.height = `${p.height}px`;
+      el.style.transform = `translate3d(${p.x}px, ${p.y}px, 0)`;
+    }
+    if (import.meta.env.DEV && projectiles.length > pool.length) {
+      console.warn(
+        `${projectiles.length} projectiles active, only ${pool.length} rendered (MAX_RENDERED_PROJECTILES)`,
+      );
+    }
+
     if (goalRef.current) goalRef.current.dataset.locked = String(isGoalLocked(state));
   }, []);
 
@@ -137,5 +177,15 @@ export function useGameEngine({ initialLevelId = 1, paused = false, onEvents }: 
 
   const level = useMemo(() => getLevel(ui.levelId), [ui.levelId]);
 
-  return { ui, level, input, playerRef, goalRef, registerEnemy, playAgain };
+  return {
+    ui,
+    level,
+    input,
+    playerRef,
+    goalRef,
+    registerEnemy,
+    registerProjectileSlot,
+    projectilePoolSize: MAX_RENDERED_PROJECTILES,
+    playAgain,
+  };
 }

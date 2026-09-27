@@ -16,9 +16,11 @@ import {
   SPAWN_Y,
   SPIKE_HITBOX_INSET,
   STOMP_TOLERANCE,
+  TOXIC_GRAVITY,
+  WORLD_HEIGHT,
   WORLD_WIDTH,
 } from "./constants";
-import type { EnemyState, InputState, Level, PlayerState, Rect } from "./types";
+import type { EnemyState, InputState, Level, PlayerState, ProjectileState, Rect } from "./types";
 
 // Geometry --------------------------------------------------------------------
 
@@ -201,6 +203,32 @@ export function classifyEnemyContact(
   if (!rectsOverlap(playerRect(player), enemyRect(enemy))) return "none";
   if (player.vy > 0 && prevPlayerBottom <= enemy.y + STOMP_TOLERANCE) return "stomp";
   return "hit";
+}
+
+// Projectiles -------------------------------------------------------------------
+
+export function projectileRect(p: ProjectileState): Rect {
+  return { x: p.x, y: p.y, width: p.width, height: p.height };
+}
+
+/** Move a projectile one tick; toxic blobs arc under gravity, others fly straight. */
+export function stepProjectile(p: ProjectileState): ProjectileState {
+  const vy = p.type === "toxic" ? p.vy + TOXIC_GRAVITY : p.vy;
+  return { ...p, x: p.x + p.vx, y: p.y + vy, vy };
+}
+
+export function isProjectileInWorld(p: ProjectileState): boolean {
+  return p.x + p.width > 0 && p.x < WORLD_WIDTH && p.y + p.height > 0 && p.y < WORLD_HEIGHT;
+}
+
+/** Only toxic projectiles are removed on hitting a platform (SPEC §11); others fly through. */
+export function projectileHitsPlatform(p: ProjectileState, platforms: readonly Rect[]): boolean {
+  return p.type === "toxic" && platforms.some((s) => rectsOverlap(projectileRect(p), s));
+}
+
+export function touchesProjectile(player: PlayerState, projectiles: readonly ProjectileState[]): boolean {
+  const r = playerRect(player);
+  return projectiles.some((p) => rectsOverlap(r, projectileRect(p)));
 }
 
 // Hazards and goal --------------------------------------------------------------

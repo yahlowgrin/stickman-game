@@ -71,6 +71,8 @@ export type EnemyState = {
   chargeTicks: number;
   /** Ticks of post-hit invulnerability left (bosses). */
   invulnTicks: number;
+  /** Current full cooldown length (shooters only); bosses shrink this on each hit. */
+  fireInterval: number;
 };
 
 export type ProjectileState = {
@@ -102,6 +104,8 @@ export type GameEvent =
   | { type: "jump" }
   | { type: "land" }
   | { type: "stomp"; enemyId: number; defeated: boolean; boss: boolean }
+  | { type: "bossHit"; enemyId: number; hp: number; defeated: boolean }
+  | { type: "shoot"; enemyId: number; projectileType: ProjectileType }
   | { type: "death"; cause: DeathCause }
   | { type: "respawn" }
   | { type: "complete"; levelId: number }

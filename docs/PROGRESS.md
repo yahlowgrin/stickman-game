@@ -6,8 +6,8 @@ Source of truth: `docs/SPEC.md`. Read both files at the start of every session.
 
 - [x] 1. Refactor structure, types, fixed-timestep physics loop
 - [x] 2. Level generator + reachability validator
-- [ ] 3. Enemies, projectiles, bosses  ← **next**
-- [ ] 4. UI, overlays, touch controls, persistence
+- [x] 3. Enemies, projectiles, bosses
+- [ ] 4. UI, overlays, touch controls, persistence  ← **next**
 - [ ] 5. Audio
 - [ ] 6. Visual polish, final check against the acceptance criteria
 
@@ -33,12 +33,13 @@ client/
       sections.ts            section ranges/labels, boss levels, boss HP table, section projectile type
       validation.ts          validator: reach table, standable segments, BFS route search, all §5/§11 rules
     hooks/
-      useGameEngine.ts       RAF loop, refs, visibilitychange pause, imperative DOM updates, syncs {levelId, status} to React
+      useGameEngine.ts       RAF loop, refs, visibilitychange pause, imperative DOM updates (incl. the
+                             fixed projectile pool + boss HP pips/charging), syncs {levelId, status} to React
       useKeyboardInput.ts    arrow/space handling with preventDefault
     components/
       GameViewport.tsx       ResizeObserver + uniform CSS scale of the 400×500 world
-      GameWorld.tsx          sky, sun, clouds + level geometry + entities
-      Platform.tsx Spike.tsx Goal.tsx Player.tsx Enemy.tsx
+      GameWorld.tsx          sky, sun, clouds + level geometry + entities + projectile pool
+      Platform.tsx Spike.tsx Goal.tsx Player.tsx Enemy.tsx Projectile.tsx
       Hud.tsx                header (title, level, control hint)
       Overlays.tsx           basic SPLAT! / LEVEL COMPLETE! / victory overlays
 scripts/validate-levels.ts   validates all 200 levels + template no-repeat rule, prints generator stats (part of `npm run check`)
@@ -122,42 +123,94 @@ vite.config.ts               root=client, base from BASE_PATH env, out=dist/
 - The template enum and `EnemyDef` data for shooters are in place; **their behaviour
   (charging, firing, projectiles, boss speed-up) is phase 3**.
 
+- **Phase 3 — shooter state machine** (`engine.ts`, `stepEnemyShooting`): per shooter,
+  `cooldown` (ticks) counts down to 0 → if the player's center is ≥ `NO_SHOT_DISTANCE`
+  (60px) from the muzzle, start a `chargeTicks = SHOT_CHARGE_TICKS` (24, ~0.4s) visible
+  charge, else retry next tick → charge counts down to 0 → spawn a projectile at the
+  facing edge and reset `cooldown = fireInterval`. `EnemyState.fireInterval` is the
+  *current* full cooldown length (starts at `def.shootCooldown`); it only differs from
+  the def value for bosses, which shrink it on each non-defeating hit.
+- **Projectile physics** (`physics.ts`, pure): `stepProjectile` moves fire/lightning
+  straight (`vx = PROJECTILE_SPEED[type]*dir, vy=0`) and toxic on an arc (`vy=
+  TOXIC_LAUNCH_VY` then `+= TOXIC_GRAVITY` each tick). `isProjectileInWorld` removes
+  anything that leaves the 400×500 world. `projectileHitsPlatform` — **toxic only**
+  (fire/lightning fly through platforms, per SPEC §11's parenthetical) — removes it on
+  overlapping any platform/ground rect. `touchesProjectile` kills the player
+  (`deathCause: "projectile"`), checked in `stepPlaying` right after the spike check.
+- **Boss escalation** (`ramp()` in engine.ts): on a stomp that hits a boss without
+  defeating it, `speed *= BOSS_SPEED_RAMP` (1.15, capped at `MAX_ENEMY_SPEED`) and, if
+  it shoots, `fireInterval *= BOSS_COOLDOWN_RAMP` (0.85, floored at
+  `MIN_SHOOT_COOLDOWN[type]`). Emits both `stomp` (existing) and a new `bossHit`
+  event; `shoot` events fire when a projectile actually spawns. Both are for phase 5
+  audio.
+- **Visuals**: enemy color/kind comes from CSS custom properties set via `data-kind`
+  (`--enemy-fill/--enemy-stroke/--enemy-glow`), darkened again by `data-boss="true"`;
+  the SVG shape itself is unchanged across kinds (shape+behavior distinguish types
+  per SPEC §16, color is an added cue, not the only one). Bosses get a gold
+  `enemy-crown` polygon (needs a taller viewBox, `0 -9 32 37` vs `0 0 32 28`) and a
+  `.boss-pips` row of `.hp-pip` spans (one per `maxHp`, toggled `.filled` each frame
+  from `e.hp`). `data-charging="true"` pulses `.enemy-charge-glow` (tinted via the
+  same `--enemy-glow` variable, so it matches the projectile the enemy is about to
+  fire). `data-fast="true"` (speed ≥ `FAST_ENEMY_SPEED_THRESHOLD`, 3.5) adds a small
+  motion-streak `::after` opposite the facing direction.
+- **Projectiles render via a fixed DOM pool** (`MAX_RENDERED_PROJECTILES` = 32
+  `<Projectile>` slots, always mounted). Each slot's markup has all three shapes
+  (round fireball + trail, zig-zag bolt, arcing blob) inline; `data-type` shows only
+  the active one via CSS, so switching a slot's type never touches the DOM tree.
+  `useGameEngine.renderFrame` walks `state.projectiles` and writes position/size/
+  type/dir/`data-active` onto the first N pool slots; unused slots get
+  `data-active="false"` (`display:none`). If a level ever exceeds the pool (none do —
+  checked by eye up to ~4 concurrent shots), a dev-only console.warn fires rather than
+  silently dropping projectiles unnoticed.
+- Fire/lightning enemies' own body color already encodes their projectile type
+  (`data-kind`), so a shooter is identifiable before it ever fires.
+
 ## Known issues / not yet done
 
-- Shooters, fast enemies and bosses all *patrol* correctly, but nothing shoots yet,
-  bosses don't speed up after hits, and all enemies render as the red base design
-  (phase 3 adds per-type visuals, HP pips, projectiles).
 - Level names such as "Toxic Pits" are chosen independently of the template, so a
   name may not describe the layout.
 - No start overlay, level select, touch controls, persistence, mute, or audio yet
   (phases 4–5). In dev, `?level=N` jumps to any level.
 - Header does not yet collapse specially on short screens.
+- `shoot` and `bossHit` events are emitted but nothing consumes them yet (no
+  `onEvents` wiring in `Home.tsx`) — that lands with audio in phase 5, though phase 4
+  will likely want `onEvents` for its own reasons (progress saving on `complete`).
 
-## Test status (end of phase 2)
+## Test status (end of phase 3)
 
 - `npm run check`: pass — tsc + "Level validation passed: 200 level(s) checked (40
   hand-authored)"; generator max 7 attempts.
-- `npm test`: 41/41 pass (physics, engine, loop, levels/validator/generator, reach).
+- `npm test`: 49/49 pass (physics, engine, loop, levels/validator/generator, reach,
+  projectiles — shooter charge timing, no-shot distance, fire/lightning speed, toxic
+  arc, platform pass-through, world-exit cleanup, projectile-kill, boss ramp-up).
 - `npm run build`: pass.
-- Chromium: contact sheets of levels 1, 11, 13, 17, 19–21, 23, 25, 26, 28–30, 32, 34,
-  36, 37, 39–41, 43–47, 100, 101, 150–152, 200 render with no console errors.
+- Chromium: levels 21, 30, 34, 41, 50, 100, 101, 110, 150, 200 screenshotted — fire
+  enemy (orange), Inferno King boss (crown + 5 gold pips), lightning enemy (cyan) with
+  its zig-zag bolt caught mid-flight, toxic blob (lime, round, glowing) caught
+  mid-arc, fast enemies' motion streaks (level 34), Thunder God (cyan boss, 5 pips)
+  and Poison King (lime boss, 6 pips) crowns/pips all correct. No console errors.
 
 ## Next
 
-**Phase 3 — Enemies, projectiles, bosses** (use Sonnet):
-1. Shooter behaviour in `engine.ts`: cooldown → ~24-tick visible charge → fire in
-   facing direction; skip the shot if the player is within 60 px horizontally of the
-   muzzle. Projectile motion: fire horizontal 3, lightning horizontal 6, toxic arc
-   (vx 3, vy −6, gravity 0.3, removed on hitting a platform); remove when leaving the
-   world; projectile contact kills (`deathCause: "projectile"`). Constants go in
-   `constants.ts`. `ProjectileState` + `nextProjectileId` already exist in GameState.
-2. Bosses: speed up and shorten cooldown after each hit (respect the min cooldowns and
-   MAX_ENEMY_SPEED 4.5), HP pips, flashing during invulnerability (CSS hook
-   `data-invulnerable` already set), gold crown/markings, bigger/darker.
-3. Enemy visuals per type (normal dark red, fire orange, lightning cyan, toxic lime,
-   fast variant), charge glow (`data-charging`), Projectile component with distinct
-   shapes (round fireball + trail, zig-zag bolt, arcing blob). Projectiles have a
-   dynamic count: render via a fixed pool of DOM nodes updated imperatively in
-   `useGameEngine.renderFrame`.
-4. Emit `shoot` and `bossHit` events for phase 5 audio. Tests: projectile speeds,
-   toxic arc rises then falls, 60 px no-shoot rule, boss speed/fire-rate increase.
+**Phase 4 — UI, overlays, touch controls, persistence** (use Sonnet):
+1. Start overlay (audio-context-creation gesture, per SPEC §14), a level-select screen
+   (grid grouped by section, only unlocked levels selectable — needs the section
+   metadata already in `sections.ts`), full death/complete/victory overlay styling
+   per §14 (current `Overlays.tsx` is a placeholder), mute toggle in the HUD
+   (`Volume2`/`VolumeX`, `aria-pressed`).
+2. Touch controls (§6): on-screen Left/Right/Jump buttons ≥56px, `pointer: coarse`
+   only, multi-touch (hold direction + jump together), `touch-action: none`, wired
+   into the existing `InputController` (`client/src/game/input.ts`) the same way
+   `useKeyboardInput` is.
+3. `localStorage` persistence (§12): highest unlocked level + mute preference, wrapped
+   in try/catch with `console.warn` on failure (no empty catches). Drive "unlock next
+   level" off the `complete` event from `stepGame` (wire `onEvents` in `Home.tsx`,
+   already plumbed through `useGameEngine`). Resume at the highest unlocked level on
+   load instead of always level 1 (remove/adjust the dev `?level=N` override
+   accordingly — keep it for dev but let it not clobber saved progress in prod).
+4. Header collapse on narrow/short screens (§3): single line, hide the control hint
+   (already conditionally hidden ≥ `md`; check very short heights too, e.g. phones
+   with the browser toolbar visible).
+5. Tests: mute persists across reload (mock localStorage), level unlock persists and
+   resumes, level-select only shows unlocked levels, touch input drives the same
+   `InputController` as keyboard (simulate multi-touch hold+jump).
