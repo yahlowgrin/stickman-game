@@ -24,7 +24,7 @@ export function Overlays({ started, onStart, status, levelCount, onPlayAgain }: 
         <p className="overlay-note overlay-note-light">
           This game plays retro chiptune music and sound effects.
         </p>
-        <button type="button" className="overlay-button" onClick={onStart}>
+        <button type="button" className="overlay-button" onClick={onStart} aria-label="Tap or click to start">
           Tap or click to start
         </button>
       </div>

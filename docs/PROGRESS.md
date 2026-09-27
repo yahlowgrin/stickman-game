@@ -9,7 +9,9 @@ Source of truth: `docs/SPEC.md`. Read both files at the start of every session.
 - [x] 3. Enemies, projectiles, bosses
 - [x] 4. UI, overlays, touch controls, persistence
 - [x] 5. Audio
-- [ ] 6. Visual polish, final check against the acceptance criteria  ← **next**
+- [x] 6. Visual polish, final check against the acceptance criteria
+
+All six phases are complete. The game is feature-complete against `docs/SPEC.md`.
 
 ## File structure
 
@@ -352,3 +354,86 @@ attempts):
    saying so plainly in the final report — this is the last phase, so anything not
    fixed here should be called out as a known limitation rather than silently
    dropped.
+
+## Phase 6 — final pass
+
+- **Accessibility audit**: every interactive `<button>` in the codebase was
+  grepped for `aria-label`; the Start overlay's button was the one gap (it had
+  visible text but no explicit `aria-label`) — added
+  `aria-label="Tap or click to start"`. Everything else (Hud's level-select and
+  mute buttons, LevelSelect's close button and 200 level tiles, TouchControls'
+  three buttons, the victory overlay's Play Again button) already had one.
+- **`prefers-reduced-motion` audit**: grepped every `@keyframes`/`animation:` in
+  `index.css` against the reduced-motion block — door pulse, the SPLAT!
+  animation, the charge glow, and the invulnerability flash are all disabled
+  (replaced with a static, still-legible state); the run-cycle limb swing is
+  slowed rather than removed (keeps some visual feedback). No screen-shake
+  effect exists in this game, so there was nothing to tone down there.
+- **Required-level playtest**: screenshotted 1, 20, 21, 26, 28, 30, 40, 41, 43,
+  100, 101, 150, 200 at 375×667 — all render correctly (right enemy colors per
+  section, boss crowns/pips/locked-door state, no page scroll), zero console
+  errors across all thirteen.
+- **Touch-vs-keyboard parity, re-verified**: a sweep of jump timing (250–500ms
+  after starting to hold Right) found completion via simulated touch works
+  reliably across a 300–450ms window — the same window that works for
+  keyboard — confirming touch and keyboard are mechanically equivalent through
+  the shared `InputController`, not just equivalent by code inspection. (An
+  earlier single-attempt touch test in this same session happened to land
+  outside that window and looked like a possible touch-specific issue; it
+  wasn't — it was a mistimed single sample, resolved by testing the actual
+  window rather than one point in it.)
+- **Full-flow re-verification**: one script covering the whole README playtest
+  checklist in sequence (start → complete level 1 → mute → reload → confirm
+  level 2 resumed *and* mute persisted → no scroll → no console errors) all in
+  one page session, to catch any interaction between features that per-feature
+  testing in earlier phases might have missed. Nothing did.
+- **README** rewritten: mentions all 200 levels, sections, audio, and touch
+  controls (was accurate but thin from phase 1); adds the SPEC §18-required
+  manual playtest checklist and an explicit "Known limitations" section.
+- Decided **not** to fix, and documented as known limitations instead (true to
+  the phase 5/6 plan's instruction to explicitly call out rather than silently
+  drop): the arc-skip jump (§ phase 4 notes — not a bug, a skill-expression
+  side effect of fair jump physics) and generated-name/template independence
+  (§ phase 2 notes — cosmetic). Neither affects correctness, fairness, or the
+  validator's guarantees.
+
+## Known issues / not yet done
+
+- **A very precisely-timed jump can occasionally skip an intermediate platform**
+  by arcing straight into the door (see phase 4's note) — not a bug, normal
+  platformer skill expression; every level's guaranteed route still needs every
+  step for an ordinarily-timed jump.
+- **Generated level names (41–200) are chosen independently of the layout
+  template**, so a level's name doesn't always describe its shape.
+- **Music is a short generated arpeggio per section**, not a hand-composed
+  tune — meets SPEC §15's letter, not necessarily what a human composer would
+  produce.
+- Touch and keyboard input, all overlays/menus, and the audio engine's
+  AudioContext-touching half are verified with Chromium/Playwright scripted
+  interaction rather than `npm test`, since jsdom/testing-library would be a
+  new dependency the spec disallows. Everything with pure logic underneath
+  (physics, engine, validator, generator, persistence, audio's scheduler/theme
+  data) is unit tested.
+
+## Test status (end of phase 6 — final)
+
+- `npm run check`: pass — tsc + "Level validation passed: 200 level(s) checked
+  (40 hand-authored)"; generator max 7 attempts.
+- `npm test`: 68/68 pass.
+- `npm run build`: pass, plain and with `BASE_PATH=/stickman-game/`.
+- `npm run dev:client`: starts; the home route serves `<title>Stickman
+  Physics</title>` and the app mounts.
+- Chromium/Playwright, scripted: all 13 SPEC §18 required levels (1, 20, 21,
+  26, 28, 30, 40, 41, 43, 100, 101, 150, 200) render correctly at 375×667 with
+  no scroll and no console errors; the full playtest checklist (start → play →
+  mute → reload → resume) passes in one continuous session; touch and
+  keyboard both reliably complete level 1 and unlock level 2 across a shared
+  timing window; zero console errors or warnings anywhere in any of the above.
+
+## Handoff
+
+The game is feature-complete against `docs/SPEC.md`. If a future session picks
+this up, `docs/SPEC.md` is still the source of truth and this file's "Decisions
+and clarifications" and "Known issues" sections above cover every deliberate
+choice and open item across all six phases — read them before assuming
+something is a bug rather than a documented tradeoff.
