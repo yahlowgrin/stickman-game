@@ -60,3 +60,32 @@ export function enemy(
     height,
   };
 }
+
+export type BossSpec = Pick<EnemyDef, "speed" | "hp" | "projectileType" | "shootCooldown">;
+
+export type ArenaLayout = {
+  platforms: Rect[];
+  spikes: Rect[];
+  enemies: EnemyDef[];
+  goal: Rect;
+};
+
+/**
+ * Boss arena (SPEC §11): wide spike-free ground, elevated platforms on both
+ * sides (the left one catches the player at spawn), and the locked door on a
+ * higher middle platform.
+ */
+export function bossArena(boss: BossSpec, sideTop = 300, topTop = 215, extra: Rect[] = []): ArenaLayout {
+  return {
+    platforms: [
+      ground(0, 400),
+      platform(10, sideTop, 120),
+      platform(270, sideTop, 120),
+      platform(140, topTop, 120),
+      ...extra,
+    ],
+    spikes: [],
+    enemies: [enemy(1, GROUND_Y, 0, 400, boss.speed, { ...boss, isBoss: true })],
+    goal: goal(182, topTop),
+  };
+}

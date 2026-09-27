@@ -5,8 +5,8 @@ Source of truth: `docs/SPEC.md`. Read both files at the start of every session.
 ## Phases
 
 - [x] 1. Refactor structure, types, fixed-timestep physics loop
-- [ ] 2. Level generator + reachability validator  ← **next**
-- [ ] 3. Enemies, projectiles, bosses
+- [x] 2. Level generator + reachability validator
+- [ ] 3. Enemies, projectiles, bosses  ← **next**
 - [ ] 4. UI, overlays, touch controls, persistence
 - [ ] 5. Audio
 - [ ] 6. Visual polish, final check against the acceptance criteria
@@ -27,9 +27,11 @@ client/
       engine.ts              stepGame(state, input, provider) -> { state, events }; status timers, respawn, level advance, victory
       loop.ts                advanceAccumulator(): fixed 60 Hz accumulator with frame-delta cap
       input.ts               input controller (held directions + latched jump press)
-      levelBuilders.ts       ground/platform/spikes/goal/enemy helpers (for authored + generated levels)
-      levels.ts              level names (core + fire) and hand-authored levels 1–10; levelProvider
-      validation.ts          structural level validator (pure)
+      levelBuilders.ts       ground/platform/spikes/goal/enemy helpers + bossArena() (authored + generated)
+      levels.ts              names and hand-authored levels 1–40; getLevel() (1–200), LEVEL_COUNT, levelProvider
+      levelGenerator.ts      mulberry32 + Rng, 8 templates + boss arena, themed names, validate-and-retry generation
+      sections.ts            section ranges/labels, boss levels, boss HP table, section projectile type
+      validation.ts          validator: reach table, standable segments, BFS route search, all §5/§11 rules
     hooks/
       useGameEngine.ts       RAF loop, refs, visibilitychange pause, imperative DOM updates, syncs {levelId, status} to React
       useKeyboardInput.ts    arrow/space handling with preventDefault
@@ -39,7 +41,7 @@ client/
       Platform.tsx Spike.tsx Goal.tsx Player.tsx Enemy.tsx
       Hud.tsx                header (title, level, control hint)
       Overlays.tsx           basic SPLAT! / LEVEL COMPLETE! / victory overlays
-scripts/validate-levels.ts   runs the validator (part of `npm run check`)
+scripts/validate-levels.ts   validates all 200 levels + template no-repeat rule, prints generator stats (part of `npm run check`)
 tests/*.test.ts              node:test simulation tests (`npm test`)
 vite.config.ts               root=client, base from BASE_PATH env, out=dist/
 ```
@@ -82,40 +84,80 @@ vite.config.ts               root=client, base from BASE_PATH env, out=dist/
   `onEvents` option — the hook point for audio (phase 5) and persistence (phase 4).
 - Dev-only `?level=N` query param picks the starting level.
 
+- **Phase 2 — reachability**: each surface is split into *standable segments*
+  (spike-free stretches ≥ 36 px, `MIN_STANDABLE_WIDTH`). A stretch is removed if
+  any spike hitbox reaches into the 80 px band the standing player occupies, so
+  spikes on the floor below a too-low platform count too. Segments are linked when
+  the edge-to-edge gap fits the §5 table for the rise (×0.85/0.70 from level 150;
+  rises > 90 px are never allowed, also late-game). BFS runs from the spawn landing
+  segment to the goal's segment. `tests/reach.test.ts` proves every maximum
+  (rise, gap) in both tables is jumpable with the real `stepGame` physics.
+- **Extra validator rules** beyond §5 (all fairness/sanity): raised platforms must not
+  overlap each other, the ground or spikes; spikes must stand on a surface; the goal
+  must not overlap a platform; enemy speed ≤ 4.5; shooter cooldowns ≥ 60/50/45;
+  an enemy may not patrol less than a player-height (80 px) above a lower standable
+  surface (it would hit a player standing there); level ids sequential, names unique.
+- **Boss rule**: the engine locks the door whenever an `isBoss` enemy is alive, so
+  "goal not reachable while the boss lives" is enforced by requiring exactly one
+  boss on every boss level (20, 30, …, 200), none elsewhere, HP per the table, and
+  the arena rules (continuous spike-free ground ≥ 320 px, raised platforms on both
+  sides). Boss HP: 20→3, 30/40→5, 50/60→5, 70/80→6, 90→7, 100→8, 110–130→6,
+  140/150→7, 160/170→8, 180/190→9, 200→10.
+- **Generator**: `templateFor(id)` walks per-8-level blocks of a seeded shuffle of the
+  8 templates (staircase, zigzag, climb, gauntlet, islands, split, pits, descent),
+  fixing the block seam, so consecutive levels never repeat; multiples of 10 use the
+  boss arena. For each attempt `Rng(id*7919 + attempt*104729)` builds a candidate;
+  the first one that passes `validateLevel` (plus a "platforms sharing x-range are
+  ≥ 45 px apart vertically" spacing check) is used — at most 7 attempts today, capped
+  at 200 (throws, failing `npm run check`, if ever exceeded). Difficulty scales gap
+  fraction, platform width and enemy count with the level; shooters use the section's
+  projectile; wide surfaces may get fast runners (3.5–4.5).
+- **Names**: lightning/toxic names are a seeded shuffle of 12×12 word pairs (unique by
+  construction). Bosses: "Thunder God I–VI", "Poison King I–IX", level 200 "The Final
+  Poison King". Level 40 is "Speed Demon Boss" (spec gave no name).
+- **Hand-authored notes**: fire cooldown = max(60, 150 − 10·(id−21)); level 28 uses 140
+  ("slower fire timing"). Fire bosses/arenas: 30 Inferno King (fire, cd 100), 40 speed
+  boss (speed 3.5, no projectile). Level 1 was re-laid out with three steps so the
+  door can no longer be touched mid-jump from the ground.
+- The template enum and `EnemyDef` data for shooters are in place; **their behaviour
+  (charging, firing, projectiles, boss speed-up) is phase 3**.
+
 ## Known issues / not yet done
 
-- Only levels 1–10 exist; `LEVEL_COUNT` is 10, so finishing level 10 shows the
-  victory screen. Phase 2 adds levels 11–40 (hand-authored) and 41–200 (generated).
-- Validator checks structure only (bounds, spawn safety, goal support, enemy
-  patrol on platform, unique names/ids). **Reachability search and the boss-lock
-  rule are not implemented yet** (phase 2). Levels 1–10 were checked by hand against
-  the §5 gap table.
-- Projectiles, shooters, boss behaviour (speed-up, HP pips) are not implemented;
-  the `ProjectileState` type and boss HP/invulnerability/door lock exist.
-- No start overlay, level select, touch controls, persistence, mute, or audio yet.
-- Header does not yet collapse specially on short screens (it is already a single
-  line at 320–375 px wide).
+- Shooters, fast enemies and bosses all *patrol* correctly, but nothing shoots yet,
+  bosses don't speed up after hits, and all enemies render as the red base design
+  (phase 3 adds per-type visuals, HP pips, projectiles).
+- Level names such as "Toxic Pits" are chosen independently of the template, so a
+  name may not describe the layout.
+- No start overlay, level select, touch controls, persistence, mute, or audio yet
+  (phases 4–5). In dev, `?level=N` jumps to any level.
+- Header does not yet collapse specially on short screens.
 
-## Test status (end of phase 1)
+## Test status (end of phase 2)
 
-- `npm run check`: pass (tsc + validator, 10 levels)
-- `npm test`: 22/22 pass
-- `npm run build`: pass, also with `BASE_PATH=/stickman-game`
-- Chromium smoke test at 375×667, 320×568 and 1280×800: no page scroll, keyboard
-  movement/jump work, death → SPLAT! → respawn works, no console errors.
+- `npm run check`: pass — tsc + "Level validation passed: 200 level(s) checked (40
+  hand-authored)"; generator max 7 attempts.
+- `npm test`: 41/41 pass (physics, engine, loop, levels/validator/generator, reach).
+- `npm run build`: pass.
+- Chromium: contact sheets of levels 1, 11, 13, 17, 19–21, 23, 25, 26, 28–30, 32, 34,
+  36, 37, 39–41, 43–47, 100, 101, 150–152, 200 render with no console errors.
 
 ## Next
 
-**Phase 2 — Level generator + reachability validator** (use Opus):
-1. Add reachability search to `validation.ts`: build standable segments (platforms
-   minus spike-covered x-intervals), connect them using the §5 gap table (85% reach
-   for levels 150+), BFS from the spawn landing segment to the goal's segment.
-2. Add the boss-lock check (goal on boss levels must be locked while boss alive —
-   the engine already locks it whenever `isBoss` enemies are alive; the validator
-   should assert boss levels contain a boss and the arena rules of §11).
-3. Hand-author levels 11–40 (fire shooters and fast enemies as data; behaviour in
-   phase 3), incl. boss arenas at 20, 30, 40.
-4. `levelGenerator.ts`: mulberry32 seeded by level id, templates (staircase,
-   zig-zag, vertical climb, gauntlet, islands over spikes, split route…), no
-   consecutive repeats, themed names for 41–200, boss arenas every 10 levels.
-5. Set `LEVEL_COUNT = 200`; tests for determinism and validator coverage.
+**Phase 3 — Enemies, projectiles, bosses** (use Sonnet):
+1. Shooter behaviour in `engine.ts`: cooldown → ~24-tick visible charge → fire in
+   facing direction; skip the shot if the player is within 60 px horizontally of the
+   muzzle. Projectile motion: fire horizontal 3, lightning horizontal 6, toxic arc
+   (vx 3, vy −6, gravity 0.3, removed on hitting a platform); remove when leaving the
+   world; projectile contact kills (`deathCause: "projectile"`). Constants go in
+   `constants.ts`. `ProjectileState` + `nextProjectileId` already exist in GameState.
+2. Bosses: speed up and shorten cooldown after each hit (respect the min cooldowns and
+   MAX_ENEMY_SPEED 4.5), HP pips, flashing during invulnerability (CSS hook
+   `data-invulnerable` already set), gold crown/markings, bigger/darker.
+3. Enemy visuals per type (normal dark red, fire orange, lightning cyan, toxic lime,
+   fast variant), charge glow (`data-charging`), Projectile component with distinct
+   shapes (round fireball + trail, zig-zag bolt, arcing blob). Projectiles have a
+   dynamic count: render via a fixed pool of DOM nodes updated imperatively in
+   `useGameEngine.renderFrame`.
+4. Emit `shoot` and `bossHit` events for phase 5 audio. Tests: projectile speeds,
+   toxic arc rises then falls, 60 px no-shoot rule, boss speed/fire-rate increase.

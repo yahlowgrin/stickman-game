@@ -61,3 +61,30 @@ export const COMPLETE_TICKS = 72;
 // Level geometry defaults -----------------------------------------------------
 export const PLATFORM_THICKNESS = 16;
 export const SPIKE_HEIGHT = 20;
+
+// Level count and sections ----------------------------------------------------
+export const TOTAL_LEVELS = 200;
+export const HAND_AUTHORED_COUNT = 40;
+export const FIRST_BOSS_LEVEL = 20;
+export const BOSS_LEVEL_INTERVAL = 10;
+
+// Fairness (SPEC §5) ------------------------------------------------------------
+/** Max edge-to-edge gap when the target is at the same height or lower. */
+export const GAP_SAME_OR_LOWER = 140;
+/** Max gap when the target is up to RISE_LOW px higher. */
+export const GAP_RISE_LOW = 120;
+export const RISE_LOW = 60;
+/** Max gap when the target is up to MAX_RISE px higher. */
+export const GAP_RISE_HIGH = 100;
+export const MAX_RISE = 90;
+/** From this level on, gaps may use 85% instead of 70% of theoretical reach. */
+export const LATE_GAME_LEVEL = 150;
+export const LATE_GAME_REACH_SCALE = 0.85 / 0.7;
+/** Narrowest spike-free stretch of surface that counts as standable. */
+export const MIN_STANDABLE_WIDTH = 36;
+/** Enemies must stay slower than the player so it can always escape. */
+export const MAX_ENEMY_SPEED = 4.5;
+/** Minimum shooter cooldowns per projectile type (ticks). */
+export const MIN_SHOOT_COOLDOWN = { fire: 60, lightning: 50, toxic: 45 } as const;
+/** Boss arenas need one continuous spike-free ground stretch at least this wide. */
+export const BOSS_ARENA_MIN_GROUND = 320;
