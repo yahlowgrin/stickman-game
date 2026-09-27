@@ -240,14 +240,23 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
   core(13, {
     platforms: [
       ground(0, 400),
-      platform(150, 345, 80),
-      platform(250, 290, 80),
+      // The three enemy platforms were widened 80->110: each enemy originally
+      // patrolled its entire platform (0px safe margin), and 80px isn't wide
+      // enough to fit both a full-size player and a comfortable gap even at
+      // the enemy's minimum patrol width. Widening (verified with the real
+      // physics: gaps to neighboring platforms only shrink, never grow, so
+      // reachability only gets easier) makes a genuine ~20px safe landing
+      // zone possible on top of the enemy's own patrol width (reported as
+      // "too hard").
+      platform(150, 345, 110),
+      platform(250, 290, 110),
       platform(320, 235, 80),
-      platform(200, 180, 80),
+      platform(170, 180, 110),
       platform(90, 125, 80),
     ],
     spikes: [spikes(150, 400, 250)],
-    enemies: [enemy(1, 345, 150, 230, 1.3), enemy(2, 290, 250, 330, 1.5), enemy(3, 180, 200, 280, 1.6)],
+    // Confined to the far side from the direction the player lands from.
+    enemies: [enemy(1, 345, 210, 260, 1), enemy(2, 290, 310, 360, 1), enemy(3, 180, 170, 220, 1)],
     goal: goal(120, 125),
   }),
 
@@ -480,17 +489,27 @@ export const HAND_AUTHORED_LEVELS: readonly Level[] = [
       ground(0, 400),
       platform(160, 345, 60),
       platform(240, 310, 60),
-      platform(320, 270, 60),
+      // Widened from 60 to 90: at 60px, the enemy's patrol (originally the
+      // full platform, 0px safe margin) left no x position where the 40px
+      // player could stand clear of it even at minimum patrol width -- the
+      // platform was too narrow to fit both. Widening makes a real safe zone
+      // possible (reported as "too hard").
+      platform(300, 270, 90),
       platform(240, 230, 60),
-      platform(160, 190, 60),
+      platform(160, 190, 90),
       platform(240, 150, 60),
       platform(320, 110, 70),
       platform(340, 190, 60),
     ],
     spikes: [spikes(150, 400, 250)],
+    // Confined to the far side from the direction the player lands from, at
+    // the enemy's minimum patrol width (32px) to maximize the safe gap --
+    // 90px is still tight (58px gap, ~18px of real slack once the player's
+    // own 40px width is subtracted), but the platform can't spare more
+    // without further widening. Was the entire platform, 0px margin.
     enemies: [
-      enemy(1, 270, 320, 380, 1, { projectileType: "fire", shootCooldown: 140 }),
-      enemy(2, 190, 160, 220, 1, { projectileType: "fire", shootCooldown: 140 }),
+      enemy(1, 270, 358, 390, 1, { projectileType: "fire", shootCooldown: 140 }),
+      enemy(2, 190, 160, 192, 1, { projectileType: "fire", shootCooldown: 140 }),
     ],
     goal: goal(337, 110),
   }),

@@ -461,3 +461,43 @@ side is safe indefinitely (300+ ticks / 5s simulated) — the level still
 requires timing a crossing or a stomp past the enemy, which is the intended
 "gauntlet" challenge, just no longer an unavoidable first-contact death.
 Re-ran `npm run check`, `npm test` (68/68), and `npm run build` — all pass.
+
+## Post-launch fix: levels 13 and 28 were also too hard (same root cause as 8)
+
+Same bug class as the level 8 fix, found across most hand-authored levels via
+an audit (see below): `enemy(id, top, startX, endX, speed)` calls where
+`endX - startX` equals the platform's full width, leaving 0px safe margin
+once the player's own 40px width is accounted for.
+
+- **Level 13** ("Staircase of Doom"): all three enemies patrolled their
+  entire 80px platform. 80px can't fit a comfortable margin even at the
+  enemy's minimum width (32px leaves only 48px gap, 8px of real player
+  slack) — widened the three platforms 80→110px and confined each enemy to
+  a 50px patrol on the far side from its landing direction, giving ~20px of
+  genuine standing slack (verified: safe for 5s standing still; not safe
+  before — every position would eventually be swept).
+- **Level 28** ("Timing Is Everything", fire section): both fire-shooter
+  enemies patrolled their entire 60px platform (even tighter than level
+  13's 80px). Widened those two platforms 60→90px and confined each enemy
+  to its minimum 32px patrol width, giving ~18px of real slack — the best
+  achievable on a 90px platform with a 32px enemy and 40px player.
+
+**Audit finding**: the same `patrol width == platform width` pattern exists
+on ~30 more enemy placements across levels 6, 9, 10, 11, 14, 15, 17, 18, 19,
+22-27, 29, and 32-39 (checked with a script comparing each enemy's patrol
+width against its platform's width minus `PLAYER_WIDTH`). Not fixed yet —
+flagged to the user rather than unilaterally rewriting ~30 levels' hand-tuned
+geometry without confirmation; only 8, 13, and 28 were reported so far.
+
+**Verification note**: naive "hold right, spam jump" scripted bots are not a
+reliable pass/fail signal for these fixes — they can't react to an enemy's
+actual position the way a human watching the screen can, and get unlucky or
+lucky depending on exact timing offsets that don't matter for a real player.
+The signal that matters is "does a genuinely safe standing zone exist" (does
+NOT depend on timing) — verified directly for each fix by placing the player
+in the intended safe zone and confirming no death occurs standing still for
+5 simulated seconds, which was *impossible* before any of these fixes (every
+position would eventually be swept). Level 28's remaining occasional deaths
+under a naive bot are from dodging the fire shooters' projectiles — a
+separate, intentional mechanic (charge-glow telegraph, timed dodge), not the
+body-collision bug being fixed here.
